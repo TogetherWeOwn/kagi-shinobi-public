@@ -1,0 +1,100 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "kagi-shinobi",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-07-01",
+  "compatibility_flags": ["nodejs_compat"],
+
+  // Custom domain attached 2026-10-01 (Workers Domains). Declared here so a
+  // deploy keeps it. workers_dev stays on: existing MCP clients use it.
+  "routes": [{ "pattern": "shinobi.infextion.net", "custom_domain": true }],
+  "workers_dev": true,
+
+  "observability": {
+    "enabled": true
+  },
+
+  "durable_objects": {
+    "bindings": [
+      { "name": "MCP_OBJECT", "class_name": "KagiMcpAgent" },
+      { "name": "RESEARCH_RUN", "class_name": "ResearchRun" },
+      // Serializes the per-bearer rate counter and the monthly spend counter.
+      // See docs/adr/0006-serialize-rate-and-spend-counters.md.
+      { "name": "METER", "class_name": "Meter" },
+      // Read-through result cache (L2) + single-flight. See
+      // docs/adr/0017-result-cache.md.
+      { "name": "RESULT_CACHE", "class_name": "ResultCache" }
+    ]
+  },
+
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["KagiMcpAgent"] },
+    { "tag": "v2", "new_sqlite_classes": ["ResearchRun"] },
+    { "tag": "v3", "new_sqlite_classes": ["Meter"] },
+    { "tag": "v4", "new_sqlite_classes": ["ResultCache"] }
+  ],
+
+  // Hourly purge of expired result-cache entries (ADR 0017): Kagi results
+  // stay transient.
+  "triggers": { "crons": ["0 * * * *"] },
+
+  "kv_namespaces": [
+    {
+      "binding": "TOKEN_KV",
+      // Replace with the id printed by: wrangler kv namespace create TOKEN_KV
+      "id": "02b633fbdaa3430dacf105d70dd215e5"
+    }
+  ],
+
+  // Cloudflare Browser Rendering — required for auto token refresh (Option C).
+  // Requires Workers Paid plan.
+  "browser": {
+    "binding": "BROWSER"
+  },
+
+  // Non-secret runtime config. Secrets (ADMIN_TOKEN, KAGI_SESSION_TOKEN,
+  // KAGI_EMAIL, KAGI_PASSWORD, KAGI_API_KEY, CAPTCHA_WEBHOOK_URL,
+  // CLIENT_KEYS) go via
+  // `wrangler secret put`.
+  "vars": {
+    "AUTO_REFRESH_ENABLED": "true",
+    "TOKEN_KV_KEY": "session_token",
+    // Tri-mode dispatcher: scrape | api | hybrid | auto (default). "auto"
+    // picks scrape / api / hybrid from which secrets are set. See
+    // docs/adr/0001-tri-mode-architecture.md.
+    "KAGI_MODE": "scrape",
+    // Hard cap on total API cost this month, in whole cents. Default 0 —
+    // every billable API call refuses until you raise it. Applied via a
+    // KV-backed counter reset at the start of each UTC month.
+    "MAX_API_CENTS_PER_MONTH": "0",
+    // Per-bearer rate limit (requests per minute). 0 disables.
+    "PER_BEARER_RPM": "60",
+    // Scoped client keys (CLIENT_KEYS secret, ADR 0013): per-key requests
+    // per minute and per UTC day. Volume caps removed per owner order
+    // 2026-10-13 — both windows are 0 (disabled) for every client key.
+    // 0 disables that window.
+    "CLIENT_KEY_RPM": "0",
+    "CLIENT_KEY_RPD": "0",
+    // Global budget on upstream Kagi calls, all callers combined (ADR 0013).
+    // Counted per call that reaches Kagi, not per worker request. Day and
+    // month volume caps removed per owner order 2026-10-13 (0 = disabled);
+    // only the 2/s anti-ban pacer remains. 0 disables that window.
+    "KAGI_CALLS_PER_SECOND": "2",
+    "KAGI_CALLS_PER_DAY": "0",
+    "KAGI_CALLS_PER_MONTH": "0",
+    // Muriel is $1 per summary — require an explicit confirm flag on the
+    // tool call unless this is set to "false".
+    "SUMMARIZER_MURIEL_REQUIRES_CONFIRM": "true",
+    // Build SHA injected at deploy time (`wrangler deploy --var
+    // BUILD_SHA:<sha>`, see .github/workflows/deploy.yml) and echoed by
+    // authenticated /health so a deployment can be matched to its commit.
+    // Default "dev" — anything not deployed through that path.
+    "BUILD_SHA": "dev",
+    // SearXNG fallback engine (ADR 0014). Empty = unconfigured: engine=auto
+    // behaves exactly as before (Kagi only) and engine=searxng refuses with
+    // not_configured. Set to the Tunnel hostname (or binding) of your SearXNG
+    // instance — a hostname, never an IP. Pair with the SEARXNG_ACCESS_*
+    // secrets when the Tunnel sits behind Cloudflare Access.
+    "SEARXNG_BASE_URL": ""
+  }
+}

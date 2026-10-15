@@ -1,0 +1,21 @@
+node_modules/
+.wrangler/
+.dev.vars
+.dev.vars.*
+!.dev.vars.example
+worker-configuration.d.ts
+dist/
+coverage/
+# Playwright writes these only when a test fails or a reporter is configured to
+# emit them; they are run artifacts, never sources.
+test-results/
+playwright-report/
+*.log
+.DS_Store
+__pycache__/
+# Agent-local state never belongs in the public repo (open-source gate):
+# identity baselines, generated tool manifests, learning caches, review notes.
+.claude/identity.json
+.claude/ecc-tools.json
+.claude/homunculus/
+.claude/reviews/
