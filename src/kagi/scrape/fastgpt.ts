@@ -162,7 +162,7 @@ export function extractAnswerAndReferences(
   if (references.length === 0) {
     $("a[href^='http']").each((_, el) => {
       const href = $(el).attr("href") ?? "";
-      if (href.startsWith("https://kagi.com") || href.startsWith("http://kagi.com")) return;
+      if (isKagiInternalLink(href)) return;
       pushRef($, el, references, seen);
     });
   }
@@ -177,6 +177,19 @@ export function extractAnswerAndReferences(
     answer: answerText || `(FastGPT returned no answer text for "${query}")`,
     references,
   };
+}
+
+/**
+ * True for links served by Kagi itself — navigation, not citations. Matched
+ * on the parsed hostname so lookalikes like https://kagi.com.evil.example/
+ * are still treated as external references.
+ */
+function isKagiInternalLink(href: string): boolean {
+  try {
+    return new URL(href).hostname.toLowerCase() === "kagi.com";
+  } catch {
+    return false;
+  }
 }
 
 function pushRef(

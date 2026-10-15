@@ -595,20 +595,20 @@ describe("kagiErrorResponse", () => {
     expect((await json(res)).error).toMatchObject({ code: "kagi-bogus" });
   });
 
-  it("maps a plain Error to a 500 with its message", async () => {
+  it("maps a plain Error to a generic 500 without echoing its message", async () => {
     const res = kagiErrorResponse(new Error("something snapped"));
 
     expect(res.status).toBe(500);
     expect((await json(res)).error).toMatchObject({
       code: "internal",
-      message: "something snapped",
+      message: "Internal error",
     });
   });
 
-  it("stringifies a thrown non-Error", async () => {
+  it("maps a thrown non-Error to a generic 500", async () => {
     const res = kagiErrorResponse("just a string");
 
     expect(res.status).toBe(500);
-    expect((await json(res)).error).toMatchObject({ code: "internal", message: "just a string" });
+    expect((await json(res)).error).toMatchObject({ code: "internal", message: "Internal error" });
   });
 });

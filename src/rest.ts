@@ -268,7 +268,10 @@ export function kagiErrorResponse(err: unknown): Response {
   // `error`, not `msg` — logWarn spreads fields last, so a field named `msg`
   // would overwrite the log message and leave the line without context.
   logWarn("unhandled error in REST handler", { error: msg });
-  return jsonError(500, "internal", msg);
+  // Never echo raw error text to the client: upstream bodies, fetch failures
+  // and non-Error throws can carry paths, tokens or stack fragments. The
+  // detail stays in the server log above; the client gets a stable code.
+  return jsonError(500, "internal", "Internal error");
 }
 
 // Latent today: KagiRateLimitError is the only error declaring retry_after, and
