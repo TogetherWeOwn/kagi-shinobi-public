@@ -1,0 +1,52 @@
+name: Feature request
+description: Propose a new capability or improvement
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        New capability should solve a real problem for a client of the worker. Check `README.md` and the ADRs in
+        `docs/adr/` first, and search existing issues — a 60-second search saves hours later.
+        Kagi scrape mode rides one personal subscription, so features that raise upstream call volume need a budget story.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area affected
+      description: Which part of the worker would this primarily live in?
+      options:
+        - MCP tools
+        - REST search and summarize
+        - Search engines and the SearXNG fallback
+        - Auth, client keys and rate limits
+        - Session token and auto-refresh
+        - Caching
+        - CI, deploy and release
+        - Docs and ADRs
+        - Cross-cutting (multiple of the above)
+        - Unsure
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or motivation
+      description: What are you trying to do that is currently difficult or impossible?
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: Describe the capability you would like. How should it work?
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Other approaches you thought about and why you ruled them out.
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Examples from other tools, related issues, etc.

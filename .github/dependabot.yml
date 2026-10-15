@@ -1,0 +1,30 @@
+version: 2
+
+updates:
+  # Runtime + build deps. CI (typecheck, tests, wrangler deploy --dry-run) gates
+  # every PR, so a green Dependabot PR has already been checked against workerd.
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    groups:
+      # Dev tooling churns often and is low risk — batch it into one PR.
+      dev-dependencies:
+        dependency-type: "development"
+    ignore:
+      # vitest 5 needs @cloudflare/vitest-pool-workers support (it peers
+      # vitest ^4). Re-take the major once pool-workers supports vitest 5.
+      - dependency-name: "vitest"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@vitest/coverage-istanbul"
+        update-types: ["version-update:semver-major"]
+    # Production deps stay ungrouped: each gets its own reviewable PR.
+    # Note the lockfile can float other production deps inside their existing
+    # caret ranges even when package.json is untouched — diff package-lock.json,
+    # not just package.json, when reviewing these.
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
