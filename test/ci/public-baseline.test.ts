@@ -6,8 +6,10 @@
 // the generated "## 1.0.0 (2026-10-17)" section, so the baseline no longer
 // requires a header-only changelog: generated versioned sections are valid
 // history, and every versioned heading must carry the Release Please date
-// suffix. An undated versioned heading would be a ported or hand-written
-// entry, not a generated one.
+// suffix. The first release is unlinked ("## X.Y.Z (YYYY-MM-DD)"); once a
+// previous tag exists Release Please links the heading
+// ("## [X.Y.Z](...compare/...) (YYYY-MM-DD)"). An undated versioned heading
+// in either form would be a ported or hand-written entry, not a generated one.
 //
 // The two documentation nits from the same review batch ride along here:
 // public contact links must target this repository, and the contributor
@@ -30,15 +32,18 @@ describe("public release baseline", () => {
   });
 
   it("every versioned changelog section is a dated Release Please heading", () => {
-    // Release Please writes "## X.Y.Z (YYYY-MM-DD)". An undated versioned
-    // heading (a ported "## 1.0.0", say) is not generated history and
-    // would be duplicated or misordered by a later Release PR.
+    // First release is unlinked; later releases link to the public compare
+    // view. An undated versioned heading in either form (a ported "## 1.0.0"
+    // or "## [1.0.1](...)", say) is not generated history and would be
+    // duplicated or misordered by a later Release PR.
     const versioned = [...changelog.matchAll(/^##\s+(.+)$/gm)]
       .map((m) => (m[1] as string).trim())
-      .filter((heading) => /^\d+\.\d+\.\d+/.test(heading));
+      .filter((heading) => /^\[?\d+\.\d+\.\d+/.test(heading));
 
     for (const heading of versioned) {
-      expect(heading, heading).toMatch(/^\d+\.\d+\.\d+ \(\d{4}-\d{2}-\d{2}\)$/);
+      expect(heading, heading).toMatch(
+        /^(?:\d+\.\d+\.\d+|\[\d+\.\d+\.\d+\]\(https:\/\/github\.com\/TogetherWeOwn\/kagi-shinobi-public\/compare\/[^)\s]+\)) \(\d{4}-\d{2}-\d{2}\)$/,
+      );
     }
   });
 
