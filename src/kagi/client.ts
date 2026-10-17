@@ -120,7 +120,11 @@ export class KagiClient {
   async search(args: SearchArgs): Promise<SearchResponse> {
     const engine = args.engine ?? "kagi";
     if (engine !== "kagi" && args.impl !== undefined) {
-      throw new Error(`impl only applies under engine='kagi', not engine='${engine}'`);
+      throw new KagiError(
+        "unsupported_in_mode",
+        `impl only applies under engine='kagi', not engine='${engine}'`,
+        { engine, impl: args.impl },
+      );
     }
     // Resolved before keying: scrape and api results differ (source_impl,
     // cost), so the impl that would serve the call is part of the key.
@@ -197,7 +201,9 @@ export class KagiClient {
         ...fallback,
         meta: addWarning(
           fallback.meta,
-          `Kagi unavailable (${kagiErr.kind}): ${kagiErr.message}; served by SearXNG fallback`,
+          // Kind only: warnings are client-visible in every response, and a
+          // typed error's free-form message can still carry upstream text.
+          `Kagi unavailable (${kagiErr.kind}); served by SearXNG fallback`,
         ),
       };
     } catch {
@@ -294,7 +300,7 @@ export class KagiClient {
     }
     // api mode: q is required (server-side stateless personalization run)
     if (!args.q) {
-      throw new Error("api-mode rank requires q");
+      throw new KagiError("unsupported_in_mode", "api-mode rank requires q", { mode: this.mode });
     }
     return this.api.rank({ urls: args.urls, q: args.q, rules: args.rules });
   }

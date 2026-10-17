@@ -12,7 +12,7 @@ import { z } from "zod";
 import type { Env } from "./env.js";
 import { createKagiClient, type KagiClient } from "./kagi/client.js";
 import { isToolAvailable } from "./kagi/capability.js";
-import { KagiError } from "./kagi/errors.js";
+import { KagiError, safeErrorMessage } from "./kagi/errors.js";
 import { isSupportedLanguage, SUPPORTED_LANGUAGES } from "./kagi/languages.js";
 import type { SearchResponse } from "./kagi/types.js";
 import { asStructured, mcpError, mcpResult } from "./mcp/result.js";
@@ -641,16 +641,16 @@ function kagiErrorMcp(err: unknown) {
   if (err instanceof KagiError) {
     return mcpError({ kind: err.kind, message: err.message, detail: err.detail });
   }
+  // REST parity (kagiErrorResponse): an untyped throw's text is a
+  // server-side diagnostic, never client output.
   return mcpError({
     kind: "internal",
-    message: err instanceof Error ? err.message : String(err),
+    message: safeErrorMessage(err),
   });
 }
 
 function describeError(reason: unknown): string {
-  if (reason instanceof KagiError) return reason.message;
-  if (reason instanceof Error) return reason.message;
-  return String(reason);
+  return safeErrorMessage(reason);
 }
 
 function formatSmallWebText(resp: SearchResponse): string {

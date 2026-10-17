@@ -7,6 +7,7 @@
 // KAGI_API_KEY flips it to hybrid without any config file edit.
 
 import type { Env } from "../env.js";
+import { KagiNotConfiguredError } from "./errors.js";
 
 export type KagiMode = "scrape" | "api" | "hybrid";
 export type KagiModeInput = KagiMode | "auto";
@@ -38,7 +39,10 @@ export function resolveMode(env: Env): ModeResolution {
     return { mode: "hybrid", reason: "KAGI_MODE=hybrid", has_session, has_api_key };
   }
   if (raw !== "auto") {
-    throw new Error(
+    // Typed, not plain Error: an invalid mode is an operator-fixable setup
+    // problem, so clients must see the actionable message (ADR 0012
+    // not_configured -> 503), not a genericized internal failure.
+    throw new KagiNotConfiguredError(
       `Invalid KAGI_MODE='${env.KAGI_MODE}' — must be one of scrape|api|hybrid|auto`,
     );
   }
@@ -53,7 +57,7 @@ export function resolveMode(env: Env): ModeResolution {
   if (has_api_key) {
     return { mode: "api", reason: "auto: only API key", has_session, has_api_key };
   }
-  throw new Error(
+  throw new KagiNotConfiguredError(
     "No Kagi credentials configured — set KAGI_SESSION_TOKEN or KAGI_API_KEY (or both), " +
       "or set KAGI_MODE=scrape and inject a token via POST /admin/token.",
   );

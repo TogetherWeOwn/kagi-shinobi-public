@@ -1,8 +1,8 @@
 blank_issues_enabled: false
 contact_links:
   - name: README
-    url: https://github.com/TogetherWeOwn/kagi-shinobi/blob/main/README.md
+    url: https://github.com/TogetherWeOwn/kagi-shinobi-public/blob/main/README.md
     about: Endpoints, MCP tools, setup and the token auto-refresh behaviour
   - name: Project guide for contributors and agents
-    url: https://github.com/TogetherWeOwn/kagi-shinobi/blob/main/CLAUDE.md
+    url: https://github.com/TogetherWeOwn/kagi-shinobi-public/blob/main/CLAUDE.md
     about: Read the conventions before opening a PR

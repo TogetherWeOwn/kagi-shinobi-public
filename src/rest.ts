@@ -7,7 +7,7 @@
 import type { Env } from "./env.js";
 import { jsonError, jsonOk } from "./util/errors.js";
 import { createKagiClient, type KagiClient, type KagiClientOptions } from "./kagi/client.js";
-import { KagiError, type KagiErrorDetail } from "./kagi/errors.js";
+import { KagiError, KagiTimeoutError, safeErrorMessage, type KagiErrorDetail } from "./kagi/errors.js";
 import { KAGI_ERROR_STATUS, restErrorCode } from "./kagi/http.js";
 import { isSupportedLanguage } from "./kagi/languages.js";
 import { logWarn } from "./util/log.js";
@@ -226,7 +226,9 @@ function normalizeEngine(v: unknown): SearchEngine | undefined | "__invalid__" {
 
 function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
   return new Promise((resolve, reject) => {
-    const t = setTimeout(() => reject(new Error(`Timeout after ${ms}ms`)), ms);
+    // Typed so a timeout stays client-visible as itself (504 / the timeout
+    // message) instead of being genericized with the untyped errors below.
+    const t = setTimeout(() => reject(new KagiTimeoutError(ms)), ms);
     p.then(
       (v) => {
         clearTimeout(t);
@@ -240,9 +242,12 @@ function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
   });
 }
 
+// Per-query failures use the same rule as the top-level envelope: typed
+// KagiError vocabulary verbatim, everything else generic. Echoing
+// `${name}: ${message}` here leaked untyped upstream text, paths and
+// markers into an otherwise-sanitized 200 response.
 function reasonToString(reason: unknown): string {
-  if (reason instanceof Error) return `${reason.name}: ${reason.message}`;
-  return String(reason);
+  return safeErrorMessage(reason);
 }
 
 // ADR 0012: status and code both come from `kind`, so the subclass a caller

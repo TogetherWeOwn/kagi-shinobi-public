@@ -131,3 +131,14 @@ export class KagiTimeoutError extends KagiError {
     this.name = "KagiTimeoutError";
   }
 }
+
+/**
+ * The only error text a client may ever see for a thrown value: a typed
+ * KagiError's message (the ADR 0012 vocabulary, written for clients), or a
+ * fixed generic string. Untyped Error messages and non-Error throws can
+ * carry upstream bodies, paths, tokens or stack fragments, so they never
+ * cross REST, MCP or research-step boundaries verbatim.
+ */
+export function safeErrorMessage(err: unknown): string {
+  return err instanceof KagiError ? err.message : "Internal error";
+}

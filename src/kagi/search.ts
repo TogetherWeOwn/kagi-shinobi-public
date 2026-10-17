@@ -132,7 +132,10 @@ function hasNoResultsMarker($: cheerio.CheerioAPI): boolean {
   if ($(".no-results, .zero-results, #no-results, .no_results").length > 0) {
     return true;
   }
-  return /no results( found)? for|nothing found|0 results/i.test($("body").text());
+  // `\b0` — a bare `0 results` pattern substring-matches every positive
+  // count ending in 0 ("10 results", "2,340 results", ...), which would
+  // silence the markup-change guard on exactly the pages it exists for.
+  return /no results( found)? for|nothing found|\b0 results/i.test($("body").text());
 }
 
 function extractSearchResult(

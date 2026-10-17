@@ -8,6 +8,7 @@
 // scrape and api columns match the real-world availability documented in
 // docs/adr/0001-tri-mode-architecture.md's capability matrix.
 
+import { KagiError } from "./errors.js";
 import type { KagiMode } from "./mode.js";
 
 export type ImplSupport =
@@ -176,22 +177,40 @@ export function pickImpl(
 ): "scrape" | "api" {
   const cap = BY_TOOL.get(tool);
   if (!cap) throw new Error(`Unknown tool: ${tool}`);
+  // Mode/impl mismatches are caller-fixable input errors, so they throw the
+  // typed kind that maps to HTTP 400 (ADR 0012) with the actionable message
+  // intact — a plain Error would be genericized to a 500/internal at the
+  // REST/MCP boundary and tell the caller nothing.
   if (!supportsMode(cap.support, mode)) {
-    throw new Error(`Tool '${tool}' not supported in mode='${mode}'`);
+    throw new KagiError(
+      "unsupported_in_mode",
+      `Tool '${tool}' not supported in mode='${mode}'`,
+      { tool, mode },
+    );
   }
   if (override) {
     // Override only honored when the tool actually supports both, and the
     // active mode can reach the requested impl.
     if (cap.support !== "both") {
-      throw new Error(
+      throw new KagiError(
+        "unsupported_in_mode",
         `Tool '${tool}' has fixed impl='${cap.support}'; ignoring override='${override}'`,
+        { tool, mode, impl: override },
       );
     }
     if (mode === "scrape" && override === "api") {
-      throw new Error("Cannot force impl='api' in mode='scrape'");
+      throw new KagiError(
+        "unsupported_in_mode",
+        "Cannot force impl='api' in mode='scrape'",
+        { tool, mode, impl: override },
+      );
     }
     if (mode === "api" && override === "scrape") {
-      throw new Error("Cannot force impl='scrape' in mode='api'");
+      throw new KagiError(
+        "unsupported_in_mode",
+        "Cannot force impl='scrape' in mode='api'",
+        { tool, mode, impl: override },
+      );
     }
     return override;
   }

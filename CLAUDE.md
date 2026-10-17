@@ -110,11 +110,12 @@ outside the repo and stay in force. Satisfy them; never propose disabling them.
 
 ## Rules
 
-The TypeScript pack in `.claude/rules/ecc/typescript/` carries `paths:` frontmatter, so each file
-loads on its own when a matching file is touched — which in this repo is essentially always.
-**Never add `@` imports for them.** `@path` imports are eager, load at launch, and defeat the very
-`paths:` scoping those files declare: four such imports here previously force-loaded **6,230 B**
-every session, including sessions that touched no TypeScript at all.
+This file is the project's self-contained contributor guide: it does not depend on any rule
+files outside the repository, and a fresh checkout needs nothing else to follow the conventions
+above. **Never add `@` imports pulling in external rule packs.** `@path` imports are eager, load
+at launch in every session — including sessions that touch no TypeScript at all — and a pack that
+is not in this repo cannot be reviewed or versioned with it. Put any convention worth keeping in
+this file instead.
 
 Everything else — the research → plan → TDD → review → commit sequence, model routing, standing
 authorizations, delegation, context bands, and this machine's `grep`/GateGuard constraints — lives
