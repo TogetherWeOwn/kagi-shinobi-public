@@ -9,13 +9,20 @@ vi.mock("@cloudflare/puppeteer", () => ({
   },
 }));
 
+vi.mock("../util/log.js", () => ({
+  logInfo: vi.fn(),
+  logWarn: vi.fn(),
+}));
+
 vi.mock("./store.js", () => ({
   saveToken: vi.fn(),
 }));
 
 import puppeteer from "@cloudflare/puppeteer";
+import { logWarn } from "../util/log.js";
 
 const mockedLaunch = vi.mocked(puppeteer.launch);
+const mockedLogWarn = vi.mocked(logWarn);
 
 function makeBrowser(finalUrl: string, errorText = "") {
   const page = {
@@ -74,6 +81,9 @@ describe("refreshTokenViaBrowser", () => {
 
     expect(result).toEqual({ ok: false, reason: "cannot coordinate refresh" });
     expect(JSON.stringify(result)).not.toContain("internal sentinel detail");
+    expect(mockedLogWarn).toHaveBeenCalledWith("browser-refresh: cannot coordinate refresh", {
+      error: "internal sentinel detail",
+    });
   });
 
   it("returns safe login failure text while recording remote detail only for logging", async () => {
@@ -86,6 +96,10 @@ describe("refreshTokenViaBrowser", () => {
       reason: "login failed: stayed on /signin (bad credentials or captcha)",
     });
     expect(JSON.stringify(result)).not.toContain("remote page secret diagnostic");
+    expect(mockedLogWarn).toHaveBeenCalledWith(
+      "browser-refresh: login failed: stayed on /signin (bad credentials or captcha)",
+      { error: "remote page secret diagnostic" },
+    );
   });
 
   it("returns safe text when browser throws diagnostics", async () => {
@@ -95,6 +109,9 @@ describe("refreshTokenViaBrowser", () => {
 
     expect(result).toEqual({ ok: false, reason: "refresh failed" });
     expect(JSON.stringify(result)).not.toContain("browser sentinel detail");
+    expect(mockedLogWarn).toHaveBeenCalledWith("browser-refresh: failed", {
+      error: "browser sentinel detail",
+    });
   });
 
   it("returns the fresh token and closes the browser after a successful login", async () => {
