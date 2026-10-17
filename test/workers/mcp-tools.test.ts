@@ -398,12 +398,14 @@ describe("kagi_search_fetch", () => {
     expect(text(result)).not.toContain("Not Available");
   });
 
-  it("stringifies a non-Error rejection", async () => {
+  it("genericizes a non-Error rejection in the text channel too", async () => {
     const search = vi.fn().mockRejectedValue("just a string");
 
     const result = await call("kagi_search_fetch", { queries: ["q"] }, "scrape", { search });
 
-    expect(text(result)).toContain("just a string");
+    expect(text(result)).toContain('Query "q": Internal error');
+    expect(text(result)).not.toContain("just a string");
+    expect(result.structuredContent?.errors).toEqual([{ query: "q", error: "Internal error" }]);
   });
 
   it("passes engine through to the facade", async () => {
