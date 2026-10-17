@@ -6,7 +6,7 @@ import { KagiApiClient } from "./client.js";
 import { guardBillable } from "./cost.js";
 import type { V0FastGPTData, V0FastGPTRequest } from "./types.js";
 import { buildMeta } from "../../mcp/meta.js";
-import { withChargedCost } from "../errors.js";
+import { KagiParseError, withChargedCost } from "../errors.js";
 import type { FastGPTResponse } from "../types.js";
 
 const FASTGPT_URL = "https://kagi.com/api/v0/fastgpt";
@@ -38,6 +38,13 @@ export async function apiFastGPT(env: Env, args: ApiFastGPTArgs): Promise<FastGP
     // Bill conservatively: charge the full amount and let the operator reconcile
     // via Kagi's monthly usage report if desired.
     await guard.settle(CENTS_PER_CALL);
+    // A non-string `output` is a malformed paid response, not an answer:
+    // returning it as one would hand callers a "successful" value that
+    // throws in their hands, past every charge tag. Fail here, inside the
+    // tagged region, so the settled charge stays attached to the error.
+    if (typeof wire.data.output !== "string") {
+      throw new KagiParseError("FastGPT response did not include an answer");
+    }
     return {
       query: args.query,
       answer: wire.data.output,

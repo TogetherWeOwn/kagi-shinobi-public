@@ -13,6 +13,7 @@
 import { DurableObject } from "cloudflare:workers";
 import type { Env } from "../env.js";
 import { createKagiClient, type KagiClient } from "../kagi/client.js";
+import { safeErrorMessage } from "../kagi/errors.js";
 import { runPipeline } from "./pipeline.js";
 import type {
   CreateRunArgs,
@@ -143,12 +144,17 @@ export class ResearchRun extends DurableObject<Env> {
         initial.run_id,
       );
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      const status: ResearchStatus = msg === "cancelled" ? "cancelled" : "failed";
+      // The raw message is read only to recognize the pipeline's own
+      // "cancelled" sentinel. What is STORED is served back to clients by
+      // every readout, so it gets the typed-or-generic treatment; the
+      // sentinel itself is our own fixed string and is stored as-is.
+      const raw = err instanceof Error ? err.message : String(err);
+      const status: ResearchStatus = raw === "cancelled" ? "cancelled" : "failed";
+      const stored = status === "cancelled" ? "cancelled" : safeErrorMessage(err);
       this.ctx.storage.sql.exec(
         `UPDATE ${TABLE} SET status = ?, error = ?, updated_at = ? WHERE run_id = ?`,
         status,
-        msg,
+        stored,
         new Date().toISOString(),
         initial.run_id,
       );

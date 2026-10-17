@@ -7,6 +7,7 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { Env } from "../env.js";
 import { budgetSnapshot } from "../kagi/api/cost.js";
+import { KagiNotConfiguredError, safeErrorMessage } from "../kagi/errors.js";
 import { readLimit } from "../util/ratelimit.js";
 import { fetchSmallWebRss } from "../kagi/scrape/smallweb.js";
 import { resolveMode } from "../kagi/mode.js";
@@ -70,7 +71,7 @@ async function readBudget(env: Env, uri: string): Promise<ResourceContent> {
     return {
       uri,
       mimeType: "application/json",
-      text: JSON.stringify({ error: err instanceof Error ? err.message : String(err) }),
+      text: JSON.stringify({ error: safeErrorMessage(err) }),
     };
   }
 }
@@ -80,14 +81,16 @@ async function readBudget(env: Env, uri: string): Promise<ResourceContent> {
 async function readCacheStats(env: Env, uri: string): Promise<ResourceContent> {
   try {
     const stub = resultCacheStub(env);
-    if (!stub) throw new Error("RESULT_CACHE binding not configured; the cache is off");
+    // Typed, not a plain Error: this setup message is written for clients,
+    // and safeErrorMessage only lets typed vocabulary through verbatim.
+    if (!stub) throw new KagiNotConfiguredError("RESULT_CACHE binding not configured; the cache is off");
     const stats = await stub.stats();
     return { uri, mimeType: "application/json", text: JSON.stringify(stats, null, 2) };
   } catch (err) {
     return {
       uri,
       mimeType: "application/json",
-      text: JSON.stringify({ error: err instanceof Error ? err.message : String(err) }),
+      text: JSON.stringify({ error: safeErrorMessage(err) }),
     };
   }
 }
@@ -105,7 +108,7 @@ async function readApiStatus(env: Env, uri: string): Promise<ResourceContent> {
       ? { status: envelope.stale ? "stale" : "ok", updatedAt: envelope.updatedAt, source: envelope.source }
       : { status: "missing" };
   } catch (err) {
-    body.error = err instanceof Error ? err.message : String(err);
+    body.error = safeErrorMessage(err);
   }
   return { uri, mimeType: "application/json", text: JSON.stringify(body, null, 2) };
 }
@@ -118,7 +121,7 @@ async function readSmallWebRecent(uri: string): Promise<ResourceContent> {
     return {
       uri,
       mimeType: "application/json",
-      text: JSON.stringify({ error: err instanceof Error ? err.message : String(err) }),
+      text: JSON.stringify({ error: safeErrorMessage(err) }),
     };
   }
 }

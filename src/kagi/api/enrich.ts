@@ -9,7 +9,7 @@ import { KagiApiClient } from "./client.js";
 import { guardBillable } from "./cost.js";
 import type { V0EnrichItem } from "./types.js";
 import { buildMeta } from "../../mcp/meta.js";
-import { withChargedCost } from "../errors.js";
+import { KagiParseError, withChargedCost } from "../errors.js";
 import type { EnrichResponse, SearchResult } from "../types.js";
 import { domainFromUrl } from "../../util/url.js";
 
@@ -34,29 +34,32 @@ async function enrich(
 ): Promise<EnrichResponse> {
   const start_ms = Date.now();
   const guard = await guardBillable(env, CENTS_PER_CALL);
-  // Past the guard the projected charge is reserved; a dispatch/decode throw
-  // must carry it so budget-keeping callers book the debit (see
-  // withChargedCost). Only the request phase is tagged at the projection —
-  // after settle the actual charge (0 on empty) is what a mapping throw owes.
-  let wire;
+  // Past the guard the projected charge is reserved; any throw from here —
+  // dispatch, shape validation, settle or mapping — must carry it so
+  // budget-keeping callers book the debit (see withChargedCost), exactly as
+  // in the other billable wrappers. The one exception is a genuine empty
+  // ARRAY whose settle(0) has already succeeded: that call is proven
+  // unbilled, and `settledFree` records it so a later throw is not priced.
+  // A missing/null/non-array `data` proves nothing about billing — the
+  // request was dispatched — so it must never reach settle(0) and refund
+  // the reservation as if it were an empty result.
+  let settledFree = false;
   try {
     const url = `https://kagi.com/api/v0/enrich/${vertical}?q=${encodeURIComponent(args.q)}`;
     const client = new KagiApiClient(env);
-    wire = await client.request<V0EnrichItem[]>({
+    const wire = await client.request<V0EnrichItem[]>({
       method: "GET",
       url,
     });
-  } catch (err) {
-    throw withChargedCost(err, CENTS_PER_CALL);
-  }
-  const items = wire.data;
-  const nonZero = items.length > 0;
-  // Docs: bill only when non-zero results are returned.
-  await guard.settle(nonZero ? CENTS_PER_CALL : 0);
+    const items = wire.data;
+    if (!Array.isArray(items)) {
+      throw new KagiParseError("Enrich response did not include a result list");
+    }
+    const nonZero = items.length > 0;
+    // Docs: bill only when non-zero results are returned.
+    await guard.settle(nonZero ? CENTS_PER_CALL : 0);
+    settledFree = !nonZero;
 
-  // Past settle a non-zero call is paid for; a mapping throw must carry the
-  // charge so budget-keeping callers book it (see withChargedCost).
-  try {
     const results: SearchResult[] = items
       .filter((it) => Boolean(it.url))
       .map((it, i) => ({
@@ -80,6 +83,6 @@ async function enrich(
       }),
     };
   } catch (err) {
-    throw withChargedCost(err, nonZero ? CENTS_PER_CALL : 0);
+    throw withChargedCost(err, settledFree ? 0 : CENTS_PER_CALL);
   }
 }

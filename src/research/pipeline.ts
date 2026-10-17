@@ -124,6 +124,12 @@ async function planSubqueries(
   if (impl === "api" && !(await canAfford(state, tracker, "kagi_fastgpt"))) {
     return { subqueries: [question] };
   }
+  // A response can settle its charge and only then prove unusable in our
+  // own hands (a non-string answer throws at `.split`). That cost is
+  // already booked locally below, so the catch must return it for the
+  // caller to emit — an un-emitted booking never reaches the persisted
+  // run state and the durable ledger under-reports the run.
+  let settledCost: number | undefined;
   try {
     const prompt =
       `Decompose the following research question into 3-5 concise, ` +
@@ -131,16 +137,20 @@ async function planSubqueries(
       `Return the sub-queries as a numbered list, one per line, no commentary.\n\n` +
       `Question: ${question}`;
     const resp = await client.fastGPT({ query: prompt, cache: true });
-    const cost = resp.meta?.cost_cents;
-    bookSpend(tracker, cost);
+    settledCost = resp.meta?.cost_cents;
+    bookSpend(tracker, settledCost);
+    if (typeof resp.answer !== "string") throw new Error("planning answer was not text");
     const subqueries = resp.answer
       .split("\n")
       .map((s) => s.replace(/^\s*\d+[\.)\-]\s*/, "").trim())
       .filter((s) => s.length > 0 && s.length < 200)
       .slice(0, MAX_SUBQUERIES);
-    return { subqueries: subqueries.length > 0 ? subqueries : [question], cost_cents: cost };
+    return { subqueries: subqueries.length > 0 ? subqueries : [question], cost_cents: settledCost };
   } catch (err) {
-    return { subqueries: [question], cost_cents: bookChargedFailure(tracker, err) };
+    return {
+      subqueries: [question],
+      cost_cents: settledCost ?? bookChargedFailure(tracker, err),
+    };
   }
 }
 
@@ -318,6 +328,10 @@ async function synthesize(
     (await remainingCents(state, tracker)) > 3 &&
     (impl !== "api" || (await canAfford(state, tracker, "kagi_fastgpt")));
   if (canFastGPT) {
+    // Same settled-then-unusable rule as planning: a non-string answer is
+    // booked (and emitted via synthFailureCost), never returned as the
+    // report and never silently dropped from the ledger.
+    let settledCost: number | undefined;
     try {
       const bullets = materials
         .map((m, i) => `[${i + 1}] ${m.title} (${m.url})\n${m.content.slice(0, 2000)}`)
@@ -328,13 +342,14 @@ async function synthesize(
         `numbers. Be specific and quote key facts when helpful.\n\n` +
         `Question: ${question}\n\nSources:\n${bullets}`;
       const resp = await client.fastGPT({ query: prompt, cache: true });
-      const cost = resp.meta?.cost_cents;
-      bookSpend(tracker, cost);
-      return { report: resp.answer, cost_cents: cost };
+      settledCost = resp.meta?.cost_cents;
+      bookSpend(tracker, settledCost);
+      if (typeof resp.answer !== "string") throw new Error("synthesis answer was not text");
+      return { report: resp.answer, cost_cents: settledCost };
     } catch (err) {
       // Fall through to the deterministic report — but a charge settled
       // before the failure is still booked and reported to the caller.
-      synthFailureCost = bookChargedFailure(tracker, err);
+      synthFailureCost = settledCost ?? bookChargedFailure(tracker, err);
     }
   }
   // Deterministic fallback: concatenate. Not pretty, but keeps the pipeline
