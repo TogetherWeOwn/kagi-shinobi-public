@@ -82,8 +82,11 @@ async function takeRefreshLease(
       reason: `another refresh holds the lease; retry in ${seconds}s`,
     };
   } catch (err) {
+    // The reason is client-visible (typed REST/MCP errors embed it), so the
+    // coordination exception's text stays server-side in the log only.
     const msg = err instanceof Error ? err.message : String(err);
-    return { granted: false, reason: `cannot coordinate refresh: ${msg}` };
+    logWarn("browser-refresh: cannot coordinate refresh", { error: msg });
+    return { granted: false, reason: "cannot coordinate refresh" };
   }
 }
 
@@ -152,10 +155,11 @@ async function doRefresh(env: Env, opts: RefreshOptions): Promise<RefreshResult>
         )
         .catch(() => "");
       const errText = typeof errRaw === "string" ? errRaw : "";
-      const reason = errText
-        ? `login failed: ${errText}`
-        : "login failed: stayed on /signin (bad credentials or captcha)";
-      logWarn(`browser-refresh: ${reason}`);
+      // Remote login-page text is untrusted, client-invisible diagnostic
+      // detail: keep it in the server log, return only fixed safe text.
+      const reason =
+        "login failed: stayed on /signin (bad credentials or captcha)";
+      logWarn(`browser-refresh: ${reason}`, errText ? { error: errText } : undefined);
       return { ok: false, reason };
     }
 
@@ -182,7 +186,7 @@ async function doRefresh(env: Env, opts: RefreshOptions): Promise<RefreshResult>
     // `error`, not `msg` — logWarn spreads fields last, so a field named `msg`
     // would overwrite the log message and leave the line without context.
     logWarn("browser-refresh: failed", { error: msg });
-    return { ok: false, reason: `refresh failed: ${msg}` };
+    return { ok: false, reason: "refresh failed" };
   } finally {
     if (browser) await browser.close().catch(() => undefined);
   }

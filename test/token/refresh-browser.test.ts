@@ -148,7 +148,7 @@ describe("successful login", () => {
 });
 
 describe("failed login", () => {
-  it("reports the on-page error when one is visible", async () => {
+  it("does not disclose the on-page error when one is visible", async () => {
     const page = fakePage({
       url: "https://kagi.com/signin?error=1",
       evaluate: vi.fn().mockResolvedValue("Invalid email or password"),
@@ -159,7 +159,7 @@ describe("failed login", () => {
 
     expect(result).toEqual({
       ok: false,
-      reason: "login failed: Invalid email or password",
+      reason: "login failed: stayed on /signin (bad credentials or captcha)",
     });
   });
 
@@ -245,7 +245,7 @@ describe("crashes", () => {
 
     expect(result).toEqual({
       ok: false,
-      reason: "refresh failed: no browser sessions available",
+      reason: "refresh failed",
     });
   });
 
@@ -254,7 +254,7 @@ describe("crashes", () => {
 
     const result = await refreshTokenViaBrowser(refreshableEnv());
 
-    expect(result.reason).toBe("refresh failed: kaboom");
+    expect(result.reason).toBe("refresh failed");
   });
 
   it("closes the browser when a step after launch throws", async () => {
@@ -278,7 +278,7 @@ describe("crashes", () => {
 
     const result = await refreshTokenViaBrowser(refreshableEnv());
 
-    expect(result.reason).toBe("refresh failed: navigation timeout");
+    expect(result.reason).toBe("refresh failed");
   });
 });
 
