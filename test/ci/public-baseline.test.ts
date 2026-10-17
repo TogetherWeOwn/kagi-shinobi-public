@@ -1,11 +1,15 @@
 // The clean public release baseline, checked offline against the repo files.
 //
-// This repo has no tags or release-please manifest yet, so the first
-// Release Please run starts from its initial version (1.0.0). That first
-// public entry must be written onto a clean changelog — not stacked above
-// an imported private-repo 1.0.0 whose links point at a repo readers
-// cannot see. The chosen baseline: CHANGELOG.md carries only its header
-// until the first public Release PR writes the first public 1.0.0.
+// The first public entry had to be written by Release Please onto a clean
+// changelog — not stacked above an imported private-repo 1.0.0 whose links
+// point at a repo readers cannot see. That first Release PR has now written
+// the generated "## 1.0.0 (2026-10-17)" section, so the baseline no longer
+// requires a header-only changelog: generated versioned sections are valid
+// history, and every versioned heading must carry the Release Please date
+// suffix. The first release is unlinked ("## X.Y.Z (YYYY-MM-DD)"); once a
+// previous tag exists Release Please links the heading
+// ("## [X.Y.Z](...compare/...) (YYYY-MM-DD)"). An undated versioned heading
+// in either form would be a ported or hand-written entry, not a generated one.
 //
 // The two documentation nits from the same review batch ride along here:
 // public contact links must target this repository, and the contributor
@@ -27,11 +31,20 @@ describe("public release baseline", () => {
     expect(changelog.split("\n")[0]?.trim()).toBe("# Changelog");
   });
 
-  it("changelog carries no pre-written release entry for the first public version", () => {
-    // Release Please writes the first public entry itself; a ported
-    // "## 1.0.0" section would be duplicated by that first Release PR.
-    expect(changelog).not.toMatch(/^##\s+1\.0\.0\b/m);
-    expect(changelog).not.toMatch(/^##\s+\d+\.\d+\.\d+/m);
+  it("every versioned changelog section is a dated Release Please heading", () => {
+    // First release is unlinked; later releases link to the public compare
+    // view. An undated versioned heading in either form (a ported "## 1.0.0"
+    // or "## [1.0.1](...)", say) is not generated history and would be
+    // duplicated or misordered by a later Release PR.
+    const versioned = [...changelog.matchAll(/^##\s+(.+)$/gm)]
+      .map((m) => (m[1] as string).trim())
+      .filter((heading) => /^\[?\d+\.\d+\.\d+/.test(heading));
+
+    for (const heading of versioned) {
+      expect(heading, heading).toMatch(
+        /^(?:\d+\.\d+\.\d+|\[\d+\.\d+\.\d+\]\(https:\/\/github\.com\/TogetherWeOwn\/kagi-shinobi-public\/compare\/[^)\s]+\)) \(\d{4}-\d{2}-\d{2}\)$/,
+      );
+    }
   });
 
   it("changelog contains no links into the private repository", () => {
