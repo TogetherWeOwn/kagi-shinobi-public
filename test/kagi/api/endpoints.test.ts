@@ -328,6 +328,35 @@ describe("KagiApiClient transport", () => {
     ).rejects.toBeInstanceOf(KagiUpstreamError);
   });
 
+  // F1: pin the leak at its source. The typed wrapper is reused by REST, MCP
+  // and research, so the raw upstream body must never enter the error at
+  // all — not merely be hidden by one surface. Callers that construct
+  // KagiUpstreamError directly with their own status text (errors.test.ts)
+  // are a separate, deliberate contract and are not changed here.
+  it("does not copy the raw upstream error body into KagiUpstreamError", async () => {
+    const marker = "synthetic-upstream-secret-9e2b";
+    stubFetch(
+      async () =>
+        new Response(`${marker} /private/synthetic-path Error: stack-marker-9e2b`, {
+          status: 502,
+          headers: { "Content-Type": "text/plain" },
+        }),
+    );
+    const client = new KagiApiClient(makeEnv(CAPACIOUS));
+
+    const err = await client
+      .request({ method: "GET", url: "https://kagi.com/api/v1/x" })
+      .catch((e: unknown) => e);
+
+    expect(err).toBeInstanceOf(KagiUpstreamError);
+    const upstream = err as KagiUpstreamError;
+    expect(upstream.status).toBe(502);
+    expect(upstream.message).not.toContain(marker);
+    expect(upstream.message).not.toContain("/private/synthetic-path");
+    expect(JSON.stringify(upstream.detail)).not.toContain(marker);
+    expect(JSON.stringify(upstream.detail)).not.toContain("stack-marker-9e2b");
+  });
+
   it("prefers the X-Kagi-Trace header over the envelope trace", async () => {
     stubFetch(
       fakeFetch(
