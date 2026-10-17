@@ -8,6 +8,7 @@
 
 import { env, runInDurableObject } from "cloudflare:test";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { KagiNotConfiguredError } from "../../src/kagi/errors";
 import { getResearchStub } from "../../src/research/run";
 
 const mocks = vi.hoisted(() => ({
@@ -151,7 +152,11 @@ describe("pipeline completion", () => {
     expect(state?.error).toBeUndefined();
   });
 
-  it("records the failure message when the pipeline throws", async () => {
+  // The terminal error is stored and later served to clients verbatim by
+  // every readout, so it gets the same treatment as other client-visible
+  // surfaces: typed vocabulary or a fixed generic string — never the raw
+  // untyped message, which can carry upstream text, paths or tokens.
+  it("records a sanitized failure when the pipeline throws", async () => {
     mocks.runPipeline.mockRejectedValue(new Error("upstream exploded"));
     const stub = researchStub();
 
@@ -160,17 +165,54 @@ describe("pipeline completion", () => {
     const state = await stub.getOutput(run_id);
 
     expect(state?.status).toBe("failed");
-    expect(state?.error).toBe("upstream exploded");
+    expect(state?.error).toBeTruthy();
+    expect(state?.error).not.toContain("upstream exploded");
   });
 
-  it("stringifies a non-Error rejection", async () => {
+  it("sanitizes a non-Error rejection instead of stringifying it", async () => {
     mocks.runPipeline.mockRejectedValue("plain string boom");
     const stub = researchStub();
 
     const { run_id } = await stub.createRun({ question: "q" });
     await settle();
+    const state = await stub.getOutput(run_id);
 
-    expect((await stub.getOutput(run_id))?.error).toBe("plain string boom");
+    expect(state?.status).toBe("failed");
+    expect(state?.error).toBeTruthy();
+    expect(state?.error).not.toContain("plain string boom");
+  });
+
+  it("keeps a diagnostic marker out of the stored terminal error and every readout", async () => {
+    const marker = "synthetic-diagnostic-secret /private/synthetic-path stack-marker";
+    mocks.runPipeline.mockRejectedValue(new Error(marker));
+    const stub = researchStub();
+
+    const { run_id } = await stub.createRun({ question: "q" });
+    await settle();
+    const output = await stub.getOutput(run_id);
+    const waited = await stub.waitForRun(run_id, 1);
+
+    expect(output?.status).toBe("failed");
+    for (const readout of [output, waited]) {
+      const text = JSON.stringify(readout);
+      expect(text).not.toContain("synthetic-diagnostic-secret");
+      expect(text).not.toContain("/private/synthetic-path");
+      expect(text).not.toContain("stack-marker");
+    }
+  });
+
+  it("preserves an intentional typed setup error verbatim", async () => {
+    mocks.runPipeline.mockRejectedValue(
+      new KagiNotConfiguredError("No Kagi credentials configured"),
+    );
+    const stub = researchStub();
+
+    const { run_id } = await stub.createRun({ question: "q" });
+    await settle();
+    const state = await stub.getOutput(run_id);
+
+    expect(state?.status).toBe("failed");
+    expect(state?.error).toBe("No Kagi credentials configured");
   });
 
   it("maps the 'cancelled' sentinel to the cancelled status, not failed", async () => {

@@ -36,6 +36,16 @@ function captureRegistrations(overrides: Record<string, unknown> = {}) {
   return registered;
 }
 
+const MARKER = "synthetic-diagnostic-secret /private/synthetic-path stack-marker";
+
+/** Nothing from an untyped diagnostic may reach a client-visible payload. */
+function expectMarkerAbsent(payload: unknown) {
+  const text = JSON.stringify(payload);
+  expect(text).not.toContain("synthetic-diagnostic-secret");
+  expect(text).not.toContain("/private/synthetic-path");
+  expect(text).not.toContain("stack-marker");
+}
+
 /** Runs one registered reader and parses the JSON payload it produced. */
 async function read(name: string, overrides: Record<string, unknown> = {}) {
   const entry = captureRegistrations(overrides).get(name);
@@ -130,7 +140,27 @@ describe("kagi://budget", () => {
 
     const body = await read("kagi_budget", { METER: brokenMeter });
 
-    expect(body.error).toMatch(/unreachable/);
+    // Client-visible text is typed-or-generic vocabulary, never the raw
+    // untyped message.
+    expect(typeof body.error).toBe("string");
+    expect(body.error).toBeTruthy();
+  });
+
+  it("does not copy an injected Meter diagnostic into the error payload", async () => {
+    const brokenMeter = {
+      idFromName: (name: string) => name,
+      get: () => ({
+        spendSnapshot: async () => {
+          throw new Error(MARKER);
+        },
+      }),
+    };
+
+    const body = await read("kagi_budget", { METER: brokenMeter });
+
+    expect(typeof body.error).toBe("string");
+    expect(body.error).toBeTruthy();
+    expectMarkerAbsent(body);
   });
 });
 
@@ -162,7 +192,24 @@ describe("kagi://cache-stats", () => {
 
     const body = await read("kagi_cache_stats", { RESULT_CACHE: brokenCache });
 
-    expect(body.error).toMatch(/unreachable/);
+    expect(typeof body.error).toBe("string");
+    expect(body.error).toBeTruthy();
+  });
+
+  it("does not copy an injected cache diagnostic into the error payload", async () => {
+    const brokenCache = {
+      idFromName: (name: string) => name,
+      get: () => ({
+        stats: async () => {
+          throw new Error(MARKER);
+        },
+      }),
+    };
+
+    const body = await read("kagi_cache_stats", { RESULT_CACHE: brokenCache });
+
+    expect(typeof body.error).toBe("string");
+    expectMarkerAbsent(body);
   });
 });
 
@@ -230,6 +277,25 @@ describe("kagi://api-status", () => {
     expect(body.error).toMatch(/No Kagi credentials configured/);
     expect(body.mode).toBeUndefined();
   });
+
+  it("does not copy an injected KV diagnostic into the error payload", async () => {
+    const brokenKv = {
+      get: async () => {
+        throw new Error(MARKER);
+      },
+      put: async () => {},
+      delete: async () => {},
+    };
+
+    const body = await read("kagi_api_status", {
+      KAGI_MODE: "scrape",
+      TOKEN_KV: brokenKv,
+    });
+
+    expect(typeof body.error).toBe("string");
+    expect(body.error).toBeTruthy();
+    expectMarkerAbsent(body);
+  });
 });
 
 describe("kagi://smallweb/recent", () => {
@@ -269,6 +335,44 @@ describe("kagi://smallweb/recent", () => {
 
     const body = await read("kagi_smallweb_recent");
 
-    expect(body.error).toBe("network down");
+    expect(typeof body.error).toBe("string");
+    expect(body.error).toBeTruthy();
+  });
+
+  it("does not copy a transport Error diagnostic into the error payload", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error(MARKER)));
+
+    const body = await read("kagi_smallweb_recent");
+
+    expect(typeof body.error).toBe("string");
+    expect(body.error).toBeTruthy();
+    expectMarkerAbsent(body);
+  });
+
+  it("does not copy a string transport rejection into the error payload", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(MARKER));
+
+    const body = await read("kagi_smallweb_recent");
+
+    expect(typeof body.error).toBe("string");
+    expect(body.error).toBeTruthy();
+    expectMarkerAbsent(body);
+  });
+
+  // Control: a remote 502 was already reduced to our own reason phrase at
+  // its producer. The typed vocabulary reaches the client verbatim; the
+  // remote body and reason phrase do not.
+  it("keeps a remote 502 sanitized to the fixed typed phrase", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(MARKER, { status: 502, statusText: MARKER }),
+      ),
+    );
+
+    const body = await read("kagi_smallweb_recent");
+
+    expect(body.error).toBe("HTTP 502: Bad Gateway");
+    expectMarkerAbsent(body);
   });
 });

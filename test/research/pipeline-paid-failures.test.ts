@@ -300,3 +300,46 @@ describe("paid calls that throw before settle (P1)", () => {
     expect(emittedTotal()).toBe(0);
   });
 });
+
+// Residual: a planning response can settle its 1.5c charge and only then
+// turn out malformed in the pipeline's own hands (a null `output` field is
+// returned as the answer and throws when split). The spend tracker may see
+// that booking locally, but unless it is also EMITTED it never reaches the
+// persisted run state — after a restart the run looks 1.5c cheaper than it
+// was. Emitted (persistable) spend must equal retained spend, exactly once.
+describe("planning charge settled before a pipeline-side failure", () => {
+  it("emits the retained planning charge once, so emitted total equals retained 2.7c", async () => {
+    let fastgptCalls = 0;
+    let searchCalls = 0;
+    stubFetch(async (input) => {
+      const url = String(input);
+      if (url.includes("/fastgpt")) {
+        fastgptCalls += 1;
+        return json({ meta: {}, data: { output: null, references: [] } });
+      }
+      if (url.includes("/v1/search")) {
+        searchCalls += 1;
+        return json({ meta: {}, data: { search: [] } });
+      }
+      return json({ meta: {}, data: {} });
+    });
+    const env = apiEnv();
+    const budget = FASTGPT_CENTS + SEARCH_CENTS; // 2.7
+
+    const result = await runPipeline(
+      new KagiClient(env),
+      makeState(),
+      emit,
+      makeAccessors(budget),
+    );
+
+    // Planning was dispatched and unusable, so the raw question is the plan;
+    // exactly one search fits beside the retained planning charge.
+    expect(fastgptCalls).toBe(1);
+    expect(result.plan).toEqual(["why is the sky blue"]);
+    expect(searchCalls).toBe(1);
+    const retained = await readSpend(env);
+    expect(retained).toBeCloseTo(budget);
+    expect(emittedTotal()).toBeCloseTo(retained);
+  });
+});

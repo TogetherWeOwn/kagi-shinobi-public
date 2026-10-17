@@ -15,6 +15,7 @@ import {
   KagiError,
   KagiNotConfiguredError,
   KagiUpstreamError,
+  chargedCostCents,
 } from "../../../src/kagi/errors";
 import { fakeFetch, makeEnv, restoreFetch, stubFetch } from "../../_helpers";
 
@@ -282,6 +283,139 @@ describe("apiEnrich", () => {
     const resp = await apiEnrichWeb(env, { q: "x" });
     expect(resp.results).toHaveLength(0);
     expect(resp.meta.cost_cents).toBe(0);
+    expect(await readSpend(env)).toBe(0);
+  });
+
+  // Malformed enrich payloads: HTTP 200 was dispatched and the projected
+  // 0.2c reservation is on the monthly books, so a shape check that throws
+  // before (or around) settle must neither lose the bookable charge tag
+  // nor refund the reservation as if it were a genuine empty result.
+  // Only a real empty ARRAY is proven unbilled and settles free.
+  const enrichWrappers = [
+    ["web", apiEnrichWeb],
+    ["news", apiEnrichNews],
+  ] as const;
+
+  for (const [vertical, enrich] of enrichWrappers) {
+    for (const [label, body] of [
+      ["data null", { data: null }],
+      ["data missing", { meta: {} }],
+    ] as const) {
+      it(`tags the projected 0.2c when ${vertical} enrich returns ${label}`, async () => {
+        let calls = 0;
+        stubFetch(async (input, init) => {
+          calls += 1;
+          return fakeFetch(body)(input, init);
+        });
+        const env = makeEnv(CAPACIOUS);
+
+        const err = await enrich(env, { q: "x" }).catch((e: unknown) => e);
+
+        expect(err).toBeInstanceOf(Error);
+        expect(calls).toBe(1);
+        expect(chargedCostCents(err)).toBeCloseTo(0.2);
+        expect(await readSpend(env)).toBeCloseTo(0.2);
+      });
+    }
+
+    for (const [label, data] of [
+      ["a plain object", {}],
+      ["an empty string", ""],
+      ["false", false],
+      ["a length-bearing object", { length: 0 }],
+    ] as const) {
+      it(`retains and tags 0.2c when ${vertical} enrich data is ${label}, not a refunded empty result`, async () => {
+        stubFetch(fakeFetch({ meta: {}, data }));
+        const env = makeEnv(CAPACIOUS);
+
+        const err = await enrich(env, { q: "x" }).catch((e: unknown) => e);
+
+        expect(err).toBeInstanceOf(Error);
+        expect(chargedCostCents(err)).toBeCloseTo(0.2);
+        expect(await readSpend(env)).toBeCloseTo(0.2);
+      });
+    }
+
+    it(`tags 0.2c when the ${vertical} enrich empty-result settlement RPC fails`, async () => {
+      // A genuine empty array normally settles free — but if that settlement
+      // fails, the reservation stays retained, and the escaping error must
+      // say so instead of looking like a free failure.
+      stubFetch(fakeFetch({ meta: {}, data: [] }));
+      const env = makeEnv(CAPACIOUS);
+      let retained = 0;
+      const failingSettleMeter = {
+        idFromName: (name: string) => name,
+        get: () => ({
+          reserveSpend: async (_month: string, cents: number, cap: number) => {
+            retained += cents;
+            return { ok: true, spent_cents: retained, cap_cents: cap };
+          },
+          settleSpend: async () => {
+            throw new Error("settlement RPC unavailable");
+          },
+          spendSnapshot: async () => retained,
+        }),
+      };
+      (env as { METER: unknown }).METER = failingSettleMeter;
+
+      const err = await enrich(env, { q: "x" }).catch((e: unknown) => e);
+
+      expect(err).toBeInstanceOf(Error);
+      expect(chargedCostCents(err)).toBeCloseTo(0.2);
+      expect(await readSpend(env)).toBeCloseTo(0.2);
+    });
+  }
+
+  it("refuses repeat malformed enrich dispatches once the retained 0.2c fills a 0.2c monthly cap", async () => {
+    let calls = 0;
+    stubFetch(async (input, init) => {
+      calls += 1;
+      return fakeFetch({ meta: {}, data: {} })(input, init);
+    });
+    const env = makeEnv({ MAX_API_CENTS_PER_MONTH: "0.2", KAGI_API_KEY: "k" });
+
+    const errors: unknown[] = [];
+    for (let i = 0; i < 3; i++) {
+      errors.push(await apiEnrichWeb(env, { q: "x" }).catch((e: unknown) => e));
+    }
+
+    // The first dispatched failure retains the whole cap; the next two are
+    // guard refusals — never dispatched, and carrying no charge of their own.
+    expect(calls).toBe(1);
+    expect(chargedCostCents(errors[0])).toBeCloseTo(0.2);
+    expect(chargedCostCents(errors[1])).toBeUndefined();
+    expect(await readSpend(env)).toBeCloseTo(0.2);
+  });
+
+  it("still settles a genuine empty news array free", async () => {
+    stubFetch(fakeFetch({ meta: {}, data: [] }));
+    const env = makeEnv(CAPACIOUS);
+    const resp = await apiEnrichNews(env, { q: "x" });
+    expect(resp.results).toHaveLength(0);
+    expect(resp.meta.cost_cents).toBe(0);
+    expect(await readSpend(env)).toBe(0);
+  });
+
+  it("still tags the settled 0.2c when a non-empty enrich payload fails mapping", async () => {
+    stubFetch(fakeFetch({ meta: {}, data: [null] }));
+    const env = makeEnv(CAPACIOUS);
+
+    const err = await apiEnrichWeb(env, { q: "x" }).catch((e: unknown) => e);
+
+    expect(err).toBeInstanceOf(Error);
+    expect(chargedCostCents(err)).toBeCloseTo(0.2);
+    expect(await readSpend(env)).toBeCloseTo(0.2);
+  });
+
+  it("dispatches and books nothing when the monthly guard refuses enrich", async () => {
+    const fetchSpy = vi.fn(fakeFetch({ meta: {}, data: [] }));
+    stubFetch(fetchSpy);
+    const env = makeEnv({ MAX_API_CENTS_PER_MONTH: "0", KAGI_API_KEY: "k" });
+
+    const err = await apiEnrichWeb(env, { q: "x" }).catch((e: unknown) => e);
+
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(chargedCostCents(err)).toBeUndefined();
     expect(await readSpend(env)).toBe(0);
   });
 });
