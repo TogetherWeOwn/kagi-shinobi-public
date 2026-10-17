@@ -163,7 +163,7 @@ async function doRefresh(env: Env, opts: RefreshOptions): Promise<RefreshResult>
       return { ok: false, reason };
     }
 
-    const cookies = await page.cookies("https://kagi.com");
+    const cookies = ***REDACTED*** page.cookies("https://kagi.com");
     const session = cookies.find((c) => c.name === "kagi_session");
     await browser.close();
     browser = undefined;
