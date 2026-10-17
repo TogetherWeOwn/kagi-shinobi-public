@@ -160,6 +160,32 @@ describe("SearxngClient.search — transport", () => {
     expect(String(err.message)).toContain("403");
   });
 
+  // CISO P2: the remote reason phrase is upstream-controlled text and must
+  // not reach callers verbatim — REST/MCP/research return this error's
+  // message and detail. The numeric status is reported; the phrase next to
+  // it must be fixed/allowlisted here, never the remote statusText.
+  it("does not copy the remote statusText into the upstream error", async () => {
+    const marker = "synthetic-statustext-secret-7c1a";
+    stubFetch(
+      async () =>
+        new Response("denied", {
+          status: 502,
+          statusText: `${marker} /private/synthetic-path Error: stack-marker-7c1a`,
+        }),
+    );
+
+    const err = await new SearxngClient(env())
+      .search({ q: "x" })
+      .catch((e) => e);
+
+    expect(err.kind).toBe("upstream");
+    expect(String(err.message)).toContain("502");
+    expect(String(err.message)).not.toContain(marker);
+    expect(String(err.message)).not.toContain("/private/synthetic-path");
+    expect(JSON.stringify(err.detail)).not.toContain(marker);
+    expect(JSON.stringify(err.detail)).not.toContain("stack-marker-7c1a");
+  });
+
   it("maps an abort into kind=timeout", async () => {
     stubFetch(async () => {
       const err = new Error("aborted");

@@ -169,3 +169,134 @@ describe("paid calls that throw after dispatch (F2)", () => {
     expect(await readSpend(env)).toBeLessThanOrEqual(budget + 1e-9);
   });
 });
+
+// CISO P1 (residual): the F2 fix above covers throws AFTER settle. But a
+// dispatch can also fail BEFORE settle — an undecodable or null envelope, an
+// HTTP-error status, a transport rejection — and still have been billed by
+// Kagi. The monthly guard keeps such unsettled reservations on its books, so
+// the run ledger must too: any throw after the monthly guard has admitted
+// the call books the projected cents against the run budget. Only a guard
+// refusal itself (nothing was ever reserved or dispatched) books nothing.
+// Behavior pinned, not mechanism: with budget 2.7c = planning 1.5c + one
+// search 1.2c, exactly one failing search may be dispatched and the emitted
+// total must be the full 2.7c, whichever pre-settle shape the failure takes.
+describe("paid calls that throw before settle (P1)", () => {
+  const PLAN_OK = {
+    meta: {},
+    data: { output: "1. alpha\n2. beta\n3. gamma", tokens: 10, references: [] },
+  };
+
+  /** Planning succeeds; every search fails the same pre-settle way. */
+  function runWithFailingSearches(searchResponder: () => Promise<Response>) {
+    let searchCalls = 0;
+    stubFetch(async (input) => {
+      const url = String(input);
+      if (url.includes("/fastgpt")) return json(PLAN_OK);
+      if (url.includes("/v1/search")) {
+        searchCalls += 1;
+        return searchResponder();
+      }
+      return json({ meta: {}, data: {} });
+    });
+    const env = apiEnv();
+    const budget = FASTGPT_CENTS + SEARCH_CENTS; // 2.7
+    return {
+      env,
+      budget,
+      searchCalls: () => searchCalls,
+      run: () => runPipeline(new KagiClient(env), makeState(), emit, makeAccessors(budget)),
+    };
+  }
+
+  const failureModes: Array<[string, () => Promise<Response>]> = [
+    [
+      "HTTP 200 with a non-JSON body",
+      async () =>
+        new Response("<html>not json</html>", {
+          status: 200,
+          headers: { "Content-Type": "text/html" },
+        }),
+    ],
+    ["HTTP 200 with a JSON null envelope", async () => json(null)],
+    [
+      "HTTP 502",
+      async () => new Response("upstream broke", { status: 502, statusText: "Bad Gateway" }),
+    ],
+    [
+      "a transport rejection",
+      async () => {
+        throw new TypeError("fetch failed");
+      },
+    ],
+  ];
+
+  for (const [mode, responder] of failureModes) {
+    it(`books a search failing as ${mode}, so only one is dispatched within a 2.7c budget`, async () => {
+      const { env, budget, searchCalls, run } = runWithFailingSearches(responder);
+
+      const result = await run();
+
+      expect(result.plan).toEqual(["alpha", "beta", "gamma"]);
+      expect(searchCalls()).toBe(1);
+      expect(emittedTotal()).toBeCloseTo(budget);
+      expect(await readSpend(env)).toBeLessThanOrEqual(budget + 1e-9);
+    });
+  }
+
+  it("books planning FastGPT that fails before settle, so the fallback search is not dispatched over budget", async () => {
+    // Same shape as the post-settle planning test above, but the FastGPT
+    // dispatch fails with an HTTP error — before any settle could run.
+    // Budget 2.0c admits planning (1.5c) alone; once that dispatched failure
+    // is booked, the fallback search (another 1.2c) no longer fits.
+    let fastgptCalls = 0;
+    let searchCalls = 0;
+    stubFetch(async (input) => {
+      const url = String(input);
+      if (url.includes("/fastgpt")) {
+        fastgptCalls += 1;
+        return new Response("upstream broke", { status: 502, statusText: "Bad Gateway" });
+      }
+      if (url.includes("/v1/search")) {
+        searchCalls += 1;
+        return json({
+          meta: {},
+          data: { search: [{ url: "https://a.example/1", title: "A", snippet: "s" }] },
+        });
+      }
+      return json({ meta: {}, data: {} });
+    });
+    const env = apiEnv();
+    const budget = 2.0;
+
+    const result = await runPipeline(new KagiClient(env), makeState(), emit, makeAccessors(budget));
+
+    expect(fastgptCalls).toBeGreaterThanOrEqual(1);
+    expect(result.plan).toEqual(["why is the sky blue"]);
+    expect(searchCalls).toBe(0);
+    expect(emittedTotal()).toBeCloseTo(FASTGPT_CENTS);
+    expect(await readSpend(env)).toBeLessThanOrEqual(budget + 1e-9);
+  });
+
+  it("a monthly-cap guard refusal dispatches nothing and books nothing", async () => {
+    // The one failure that must stay free: the guard refuses before any
+    // reservation or dispatch, so there is nothing Kagi could have billed.
+    // Booking projected cents here would burn run budget on calls that
+    // never left the worker.
+    let fetchCalls = 0;
+    stubFetch(async () => {
+      fetchCalls += 1;
+      return json(PLAN_OK);
+    });
+    const env = makeEnv({
+      KAGI_MODE: "api",
+      KAGI_API_KEY: "synthetic-key",
+      MAX_API_CENTS_PER_MONTH: "0",
+    });
+    const budget = FASTGPT_CENTS + SEARCH_CENTS;
+
+    await runPipeline(new KagiClient(env), makeState(), emit, makeAccessors(budget));
+
+    expect(fetchCalls).toBe(0);
+    expect(emittedTotal()).toBe(0);
+  });
+});

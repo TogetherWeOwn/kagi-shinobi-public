@@ -357,6 +357,39 @@ describe("KagiApiClient transport", () => {
     expect(JSON.stringify(upstream.detail)).not.toContain("stack-marker-9e2b");
   });
 
+  // CISO P2: the response BODY is no longer copied (F1 above), but the remote
+  // reason phrase (statusText) still is — and a reason phrase is
+  // attacker-influenced upstream text like any other. The numeric status is
+  // the only part callers need; whatever phrase accompanies it must be ours
+  // (fixed or allowlisted at this producer), never the remote verbatim.
+  // Direct construction with caller-owned text (errors.test.ts) is a
+  // separate contract and stays unchanged.
+  it("does not copy the remote statusText into KagiUpstreamError", async () => {
+    const marker = "synthetic-statustext-secret-7c1a";
+    stubFetch(
+      async () =>
+        new Response("upstream broke", {
+          status: 502,
+          statusText: `${marker} /private/synthetic-path Error: stack-marker-7c1a`,
+          headers: { "Content-Type": "text/plain" },
+        }),
+    );
+    const client = new KagiApiClient(makeEnv(CAPACIOUS));
+
+    const err = await client
+      .request({ method: "GET", url: "https://kagi.com/api/v1/x" })
+      .catch((e: unknown) => e);
+
+    expect(err).toBeInstanceOf(KagiUpstreamError);
+    const upstream = err as KagiUpstreamError;
+    expect(upstream.status).toBe(502);
+    expect(upstream.message).toContain("502");
+    expect(upstream.message).not.toContain(marker);
+    expect(upstream.message).not.toContain("/private/synthetic-path");
+    expect(JSON.stringify(upstream.detail)).not.toContain(marker);
+    expect(JSON.stringify(upstream.detail)).not.toContain("stack-marker-7c1a");
+  });
+
   it("prefers the X-Kagi-Trace header over the envelope trace", async () => {
     stubFetch(
       fakeFetch(

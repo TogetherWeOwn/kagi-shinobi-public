@@ -48,4 +48,39 @@ describe("handleSummarize with the real API wrapper (F1)", () => {
     expect(body).not.toContain("/private/synthetic-path");
     expect(body).not.toContain("stack-marker-9e2b");
   });
+
+  // CISO P2: same surface, second channel — the markers ride in the remote
+  // reason phrase (statusText), not the body. The REST response must report
+  // the numeric upstream failure without any of the remote phrase verbatim.
+  it("answers 502 without the remote statusText in the response", async () => {
+    const statusMarker = "synthetic-statustext-secret-7c1a";
+    stubFetch(
+      async () =>
+        new Response("upstream broke", {
+          status: 502,
+          statusText: `${statusMarker} /private/synthetic-path Error: stack-marker-7c1a`,
+          headers: { "Content-Type": "text/plain" },
+        }),
+    );
+    const env = makeEnv({
+      KAGI_MODE: "api",
+      KAGI_API_KEY: "synthetic-key",
+      // Synthetic in-memory cap only; the checked-in cap stays "0".
+      MAX_API_CENTS_PER_MONTH: "10000",
+    });
+
+    const res = await handleSummarize(
+      new Request("https://worker.test/summarize", {
+        method: "POST",
+        body: JSON.stringify({ url: "https://example.test" }),
+      }),
+      env,
+    );
+
+    expect(res.status).toBe(502);
+    const body = await res.text();
+    expect(body).not.toContain(statusMarker);
+    expect(body).not.toContain("/private/synthetic-path");
+    expect(body).not.toContain("stack-marker-7c1a");
+  });
 });
