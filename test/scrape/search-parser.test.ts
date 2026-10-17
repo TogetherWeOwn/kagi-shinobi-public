@@ -125,6 +125,34 @@ describe("parseSearchResults recorded fixtures", () => {
     }
   });
 
+  // A positive result count anywhere in the body text ("10 results",
+  // "2,340 results", ...) contains the substring "0 results" — it must not
+  // be mistaken for the genuine zero-results marker and silence the guard.
+  it.each([
+    "The top 10 results for laptops",
+    "100 results ranked by relevance",
+    "About 2,340 results",
+    "50 results near you",
+  ])("throws markup_changed when renamed selectors leave only %j", (snippet) => {
+    const page = `<!doctype html>
+<html><body>
+  <div class="_0_main-search-results">
+    <div class="renamed-result">
+      <div class="renamed-title"><a href="https://example.com/one">A result</a></div>
+      <div class="renamed-desc">${snippet}</div>
+    </div>
+  </div>
+  <button id="load_more_results">More</button>
+</body></html>`;
+
+    expect(() => parseSearchResults(page, 10)).toThrowError(KagiMarkupChangedError);
+    try {
+      parseSearchResults(page, 10);
+    } catch (e) {
+      expect((e as KagiMarkupChangedError).kind).toBe("markup_changed");
+    }
+  });
+
   it("throws markup_changed when blocks survive but yield no title+url", () => {
     // Only the inner selectors renamed: `.search-result` and `.sr-group`
     // blocks exist but produce nothing. The block markers trip the guard.

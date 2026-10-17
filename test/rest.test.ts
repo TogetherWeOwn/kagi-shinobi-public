@@ -24,6 +24,8 @@ import {
   KagiUpstreamError,
 } from "../src/kagi/errors";
 import { KAGI_ERROR_STATUS, restErrorCode } from "../src/kagi/http";
+import { resolveMode } from "../src/kagi/mode";
+import { pickImpl } from "../src/kagi/capability";
 import type { ErrorBody } from "../src/util/errors";
 import { makeEnv } from "./_helpers";
 
@@ -323,21 +325,40 @@ describe("handleSearch dispatch", () => {
     const body = await json(res);
 
     expect(res.status).toBe(200);
-    expect(body.results).toMatchObject([
-      { query: "good", ok: true },
-      { query: "bad", ok: false, error: "KagiUpstreamError: HTTP 500: Server Error" },
-    ]);
+    expect(body.results).toMatchObject([{ query: "good", ok: true }, { query: "bad", ok: false }]);
+    // Typed KagiError vocabulary stays visible per ADR 0012; only untyped
+    // error text is genericized.
+    expect((body.results as Array<{ error: string }>)[1].error).toContain(
+      "HTTP 500: Server Error",
+    );
   });
 
-  it("stringifies a non-Error rejection reason", async () => {
+  it("does not echo a non-Error rejection reason to the client", async () => {
     createKagiClient.mockReturnValue(
-      fakeClient({ search: vi.fn().mockRejectedValue("plain string") }),
+      fakeClient({ search: vi.fn().mockRejectedValue("synthetic-secret-marker-7f3a") }),
     );
 
     const res = await handleSearch(post({ queries: ["q"] }), makeEnv());
-    const [first] = (await json(res)).results as Array<{ error: string }>;
+    const body = await json(res);
+    const [first] = body.results as Array<{ error: string }>;
 
-    expect(first.error).toBe("plain string");
+    expect(first.error).toBe("Internal error");
+    expect(JSON.stringify(body)).not.toContain("synthetic-secret-marker-7f3a");
+  });
+
+  it("does not echo an untyped Error's message, path or stack text per query", async () => {
+    const marker = "synthetic-secret-marker-7f3a";
+    const err = new Error(`upstream blew up ${marker} at /private/synthetic-marker-path`);
+    err.stack = `Error: ${marker}\n    at somewhere (/private/synthetic-marker-path:1:2)`;
+    createKagiClient.mockReturnValue(fakeClient({ search: vi.fn().mockRejectedValue(err) }));
+
+    const res = await handleSearch(post({ queries: ["q"] }), makeEnv());
+    const body = await json(res);
+    const [first] = body.results as Array<{ error: string }>;
+
+    expect(first.error).toBe("Internal error");
+    expect(JSON.stringify(body)).not.toContain(marker);
+    expect(JSON.stringify(body)).not.toContain("/private/synthetic-marker-path");
   });
 
   it("times out a query that never settles", async () => {
@@ -354,6 +375,39 @@ describe("handleSearch dispatch", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  // First-run experience: a deploy with no Kagi credentials (mode auto) must
+  // get the actionable not_configured answer, not a generic 500. The real
+  // resolveMode throw is driven through the handler via the client factory.
+  it("surfaces missing credentials as 503 kagi-not-configured, not 500 internal", async () => {
+    createKagiClient.mockImplementation((env: never) => {
+      resolveMode(env);
+      return fakeClient();
+    });
+
+    const res = await handleSearch(post({ queries: ["q"] }), makeEnv({ KAGI_MODE: "auto" }));
+
+    expect(res.status).toBe(503);
+    expect((await json(res)).error).toMatchObject({
+      code: "kagi-not-configured",
+      message: expect.stringMatching(/KAGI_SESSION_TOKEN|KAGI_API_KEY/),
+    });
+  });
+
+  it("surfaces an invalid KAGI_MODE as 503 kagi-not-configured", async () => {
+    createKagiClient.mockImplementation((env: never) => {
+      resolveMode(env);
+      return fakeClient();
+    });
+
+    const res = await handleSearch(post({ queries: ["q"] }), makeEnv({ KAGI_MODE: "yolo" }));
+
+    expect(res.status).toBe(503);
+    expect((await json(res)).error).toMatchObject({
+      code: "kagi-not-configured",
+      message: expect.stringMatching(/Invalid KAGI_MODE/),
+    });
   });
 });
 
@@ -493,6 +547,48 @@ describe("handleSummarize dispatch", () => {
 
     expect(res.status).toBe(401);
     expect((await json(res)).error).toMatchObject({ code: "kagi-auth" });
+  });
+
+  // impl='api' against a scrape-mode deploy is a caller-fixable input error:
+  // the real pickImpl throw must reach the client as a typed 400, not a 500.
+  it("surfaces an incompatible impl override as a typed 400", async () => {
+    createKagiClient.mockReturnValue(
+      fakeClient({
+        summarize: vi.fn().mockImplementation(async () => {
+          pickImpl("kagi_summarize_url", "scrape", "api");
+        }),
+      }),
+    );
+
+    const res = await handleSummarize(
+      post({ url: "https://example.test", impl: "api" }),
+      makeEnv(),
+    );
+    const body = await json(res);
+
+    expect(res.status).toBe(400);
+    expect(body.error).toMatchObject({
+      code: expect.stringMatching(/^kagi-/),
+      message: expect.stringMatching(/impl|mode='scrape'/),
+    });
+    expect(body.error).not.toMatchObject({ code: "internal" });
+  });
+
+  it("does not echo an untyped summarize error's marker text", async () => {
+    createKagiClient.mockReturnValue(
+      fakeClient({
+        summarize: vi
+          .fn()
+          .mockRejectedValue(new Error("synthetic-secret-marker-7f3a /private/synthetic-path")),
+      }),
+    );
+
+    const res = await handleSummarize(post({ url: "https://example.test" }), makeEnv());
+    const body = await json(res);
+
+    expect(res.status).toBe(500);
+    expect(body.error).toMatchObject({ code: "internal", message: "Internal error" });
+    expect(JSON.stringify(body)).not.toContain("synthetic-secret-marker-7f3a");
   });
 
   it("passes the url through as a url-kind reference", async () => {

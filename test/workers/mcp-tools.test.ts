@@ -15,9 +15,14 @@ import {
   KagiAuthError,
   KagiBudgetExceededError,
   KagiConfirmRequiredError,
+  KagiError,
   KagiNotConfiguredError,
   KagiUnsupportedInModeError,
 } from "../../src/kagi/errors";
+import { resolveMode } from "../../src/kagi/mode";
+import { pickImpl } from "../../src/kagi/capability";
+import { KAGI_ERROR_STATUS } from "../../src/kagi/http";
+import type { Env } from "../../src/env";
 
 const { createKagiClient, getResearchStub } = vi.hoisted(() => ({
   createKagiClient: vi.fn(),
@@ -316,6 +321,34 @@ describe("kagi_search_fetch", () => {
     expect(result.structuredContent?.errors).toHaveLength(1);
     // Only the successful response survives into the structured channel.
     expect(result.structuredContent?.queries).toHaveLength(1);
+  });
+
+  it("genericizes an untyped per-query failure instead of echoing its text", async () => {
+    const search = vi
+      .fn()
+      .mockResolvedValueOnce(searchResponse("good", ["Fine"]))
+      .mockRejectedValueOnce(
+        new Error("synthetic-secret-marker-7f3a at /private/synthetic-marker-path"),
+      );
+
+    const result = await call("kagi_search_fetch", { queries: ["good", "bad"] }, "scrape", {
+      search,
+    });
+
+    expect(text(result)).toContain("Fine");
+    expect(text(result)).toContain('Query "bad": Internal error');
+    expect(JSON.stringify(result)).not.toContain("synthetic-secret-marker-7f3a");
+    expect(JSON.stringify(result)).not.toContain("/private/synthetic-marker-path");
+    expect(result.structuredContent?.errors).toEqual([{ query: "bad", error: "Internal error" }]);
+  });
+
+  it("genericizes a non-Error per-query rejection", async () => {
+    const search = vi.fn().mockRejectedValue("synthetic-secret-marker-7f3a");
+
+    const result = await call("kagi_search_fetch", { queries: ["bad"] }, "scrape", { search });
+
+    expect(JSON.stringify(result)).not.toContain("synthetic-secret-marker-7f3a");
+    expect(result.structuredContent?.errors).toEqual([{ query: "bad", error: "Internal error" }]);
   });
 
   it("reports the active mode in the structured channel", async () => {
@@ -702,8 +735,11 @@ describe("the research trio", () => {
 
     const result = await call("kagi_research_create_run", { question: "why" });
 
+    // An untyped throw is genericized (REST parity): the detail is a
+    // server-side diagnostic, not client output.
     expect(result.structuredContent?.error_kind).toBe("internal");
-    expect(result.structuredContent?.message).toBe("DO unreachable");
+    expect(result.structuredContent?.message).toBe("Internal error");
+    expect(JSON.stringify(result)).not.toContain("DO unreachable");
   });
 });
 
@@ -878,12 +914,60 @@ describe("kagiErrorMcp", () => {
     expect(result.structuredContent).toMatchObject({ tool: "kagi_extract", mode: "scrape" });
   });
 
-  it("stringifies a thrown non-Error", async () => {
+  it("genericizes a thrown non-Error instead of echoing it", async () => {
     const result = await call("kagi_fastgpt", { query: "q" }, "scrape", {
-      fastGPT: vi.fn().mockRejectedValue("a bare string"),
+      fastGPT: vi.fn().mockRejectedValue("synthetic-secret-marker-7f3a"),
     });
 
-    expect(result.structuredContent?.message).toBe("a bare string");
+    expect(result.structuredContent?.error_kind).toBe("internal");
+    expect(result.structuredContent?.message).toBe("Internal error");
+    expect(JSON.stringify(result)).not.toContain("synthetic-secret-marker-7f3a");
+  });
+
+  it("genericizes an untyped Error carrying marker/path text", async () => {
+    const err = new Error("synthetic-secret-marker-7f3a at /private/synthetic-marker-path");
+    const result = await call("kagi_fastgpt", { query: "q" }, "scrape", {
+      fastGPT: vi.fn().mockRejectedValue(err),
+    });
+
+    expect(result.structuredContent?.error_kind).toBe("internal");
+    expect(result.structuredContent?.message).toBe("Internal error");
+    expect(JSON.stringify(result)).not.toContain("synthetic-secret-marker-7f3a");
+    expect(JSON.stringify(result)).not.toContain("/private/synthetic-marker-path");
+  });
+
+  // Setup errors are typed, so the actionable vocabulary reaches MCP clients:
+  // the real resolveMode throw must surface as not_configured, not internal.
+  it("surfaces missing credentials as not_configured with the actionable message", async () => {
+    let thrown: unknown;
+    try {
+      resolveMode({ ADMIN_TOKEN: "x" } as Env);
+    } catch (e) {
+      thrown = e;
+    }
+    const result = await call("kagi_fastgpt", { query: "q" }, "scrape", {
+      fastGPT: vi.fn().mockRejectedValue(thrown),
+    });
+
+    expect(result.structuredContent?.error_kind).toBe("not_configured");
+    expect(String(result.structuredContent?.message)).toMatch(/KAGI_SESSION_TOKEN|KAGI_API_KEY/);
+  });
+
+  it("surfaces an incompatible impl override as a typed 400-mapped kind", async () => {
+    let thrown: unknown;
+    try {
+      pickImpl("kagi_summarize_url", "scrape", "api");
+    } catch (e) {
+      thrown = e;
+    }
+    const result = await call("kagi_fastgpt", { query: "q" }, "scrape", {
+      fastGPT: vi.fn().mockRejectedValue(thrown),
+    });
+
+    expect(thrown).toBeInstanceOf(KagiError);
+    const kind = result.structuredContent?.error_kind as keyof typeof KAGI_ERROR_STATUS;
+    expect(KAGI_ERROR_STATUS[kind]).toBe(400);
+    expect(String(result.structuredContent?.message)).toMatch(/impl|mode='scrape'/);
   });
 
   // ADR 0012 deleted three per-class branches in kagiErrorMcp on the claim they

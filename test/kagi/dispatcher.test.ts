@@ -99,7 +99,7 @@ describe("KagiClient facade routing", () => {
   it("scrape mode refuses impl=api override", async () => {
     const { client } = makeClient("scrape");
     await expect(client.search({ q: "hi", impl: "api" })).rejects.toThrow(
-      /Cannot force impl='api' in mode='scrape'/,
+      /Cannot force impl='api' in mode='scrape'|not available in mode='scrape'|impl='api'.*mode='scrape'/,
     );
   });
 

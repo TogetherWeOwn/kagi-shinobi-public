@@ -168,6 +168,23 @@ describe("engine=auto", () => {
     expect(r.meta.warnings?.[1]).toContain("Kagi unavailable (auth)");
   });
 
+  it("does not copy raw error text into the fallback warning", async () => {
+    const { client } = makeClient("scrape");
+    vi.spyOn(KagiScrapeClient.prototype, "search").mockRejectedValueOnce(
+      new KagiAuthError("session dead synthetic-secret-marker-7f3a /private/synthetic-path"),
+    );
+
+    const r = await client.search({ q: "hi", engine: "auto" });
+
+    expect(r.meta.impl).toBe("searxng");
+    // The kind is the safe, stable vocabulary; free-form message text from a
+    // thrown value must not ride along to clients in meta.warnings.
+    expect(r.meta.warnings?.join("\n")).toContain("Kagi unavailable (auth)");
+    expect(r.meta.warnings?.join("\n")).not.toContain("synthetic-secret-marker-7f3a");
+    expect(r.meta.warnings?.join("\n")).not.toContain("/private/synthetic-path");
+    expect(r.meta.warnings?.join("\n")).not.toContain("session dead");
+  });
+
   it("with the Kagi budget at 0, auto still succeeds via SearXNG with the same schema", async () => {
     // Real spend guard (MemMeter from _helpers), cap 0: the api impl throws
     // budget_exceeded before any network call, exactly as production does.

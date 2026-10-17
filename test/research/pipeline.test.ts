@@ -10,6 +10,9 @@ import { runPipeline, STEP_HELPERS } from "../../src/research/pipeline";
 import type { StateAccessors, StepEmit } from "../../src/research/pipeline";
 import type { KagiClient } from "../../src/kagi/client";
 import type { ResearchRunState } from "../../src/research/types";
+import { pickImpl } from "../../src/kagi/capability";
+import { KagiUpstreamError } from "../../src/kagi/errors";
+import type { KagiImpl } from "../../src/kagi/types";
 
 const NOW = "2026-01-01T00:00:00.000Z";
 
@@ -221,29 +224,48 @@ describe("searching", () => {
 
     await runPipeline(client, makeState(), emit, makeAccessors());
 
-    expect(client.search).toHaveBeenCalledWith({ q: "why is the sky blue", limit: 3 });
+    expect(client.search).toHaveBeenCalledWith(
+      expect.objectContaining({ q: "why is the sky blue", limit: 3 }),
+    );
     expect(details()).toContain('Found 2 results for "why is the sky blue"');
   });
 
   it("records a failed sub-query without failing the run", async () => {
     const client = makeClient({
-      search: vi.fn().mockRejectedValue(new Error("kagi is down")),
+      search: vi
+        .fn()
+        .mockRejectedValue(new Error("synthetic-secret-marker-7f3a /private/synthetic-path")),
     });
 
     const result = await runPipeline(client, makeState(), emit, makeAccessors());
 
-    expect(details()).toContain('Search failed for "why is the sky blue": kagi is down');
+    // Step details are client-visible: untyped error text is genericized,
+    // never copied into the run's steps.
+    expect(details()).toContain('Search failed for "why is the sky blue": Internal error');
+    expect(details().join("\n")).not.toContain("synthetic-secret-marker-7f3a");
+    expect(details().join("\n")).not.toContain("/private/synthetic-path");
     expect(result.citations).toEqual([]);
   });
 
-  it("stringifies a non-Error rejection reason", async () => {
+  it("keeps a typed KagiError's safe message in the step detail", async () => {
     const client = makeClient({
-      search: vi.fn().mockRejectedValue("plain string boom"),
+      search: vi.fn().mockRejectedValue(new KagiUpstreamError(503, "Unavailable")),
     });
 
     await runPipeline(client, makeState(), emit, makeAccessors());
 
-    expect(details()).toContain('Search failed for "why is the sky blue": plain string boom');
+    expect(details().join("\n")).toContain("HTTP 503: Unavailable");
+  });
+
+  it("genericizes a non-Error rejection reason in the step detail", async () => {
+    const client = makeClient({
+      search: vi.fn().mockRejectedValue("synthetic-secret-marker-7f3a"),
+    });
+
+    await runPipeline(client, makeState(), emit, makeAccessors());
+
+    expect(details()).toContain('Search failed for "why is the sky blue": Internal error');
+    expect(details().join("\n")).not.toContain("synthetic-secret-marker-7f3a");
   });
 
   it("deduplicates URLs across sub-queries, keeping the first title", async () => {
@@ -344,7 +366,9 @@ describe("extracting", () => {
 
   it("falls back to the scrape summarizer when extract fails", async () => {
     const client = makeClient({
-      extract: vi.fn().mockRejectedValue(new Error("extract exploded")),
+      extract: vi
+        .fn()
+        .mockRejectedValue(new Error("extract exploded synthetic-secret-marker-7f3a")),
     });
 
     await runPipeline(
@@ -354,13 +378,16 @@ describe("extracting", () => {
       makeAccessors({ allowApi: () => true, budgetCents: () => 100 }),
     );
 
-    expect(details()).toContain("Extract failed, falling back to summarize: extract exploded");
-    expect(client.summarize).toHaveBeenCalledWith({
-      kind: "url",
-      ref: "https://a.example/1",
-      language: "EN",
-      style: "summary",
-    });
+    expect(details()).toContain("Extract failed, falling back to summarize: Internal error");
+    expect(details().join("\n")).not.toContain("synthetic-secret-marker-7f3a");
+    expect(client.summarize).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "url",
+        ref: "https://a.example/1",
+        language: "EN",
+        style: "summary",
+      }),
+    );
   });
 
   it("counts only the URLs the summarizer managed to fetch", async () => {
@@ -506,6 +533,230 @@ describe("stage ordering", () => {
       "extracting",
       "synthesizing",
     ]);
+  });
+});
+
+// Spend guard: budget_cents=0 means "free scrape-only" in every mode, and a
+// nonzero budget is a ceiling across concurrent sub-queries and the
+// extract->summarize fallback. The fake below bills like the real facade:
+// it resolves each call's impl through the real pickImpl (so forcing scrape
+// in api mode throws, exactly as production does) and counts a paid call
+// only when the api impl would serve it, at the published rates (search
+// 1.2c, summarize capped at 30c).
+describe("spend guard", () => {
+  const SEARCH_CENTS = 1.2;
+  const SUMMARIZE_CENTS = 30;
+
+  function makeBillingClient(
+    mode: "scrape" | "api" | "hybrid",
+    opts: { planAnswer?: string; urls?: string[]; extract?: unknown } = {},
+  ) {
+    const paid = { search: 0, summarize: 0, fastgpt: 0 };
+    const urls = opts.urls ?? ["https://a.example/1"];
+    let fastgptCalls = 0;
+    const client = makeClient({
+      mode,
+      search: vi.fn(async (args: { q: string; limit?: number; impl?: KagiImpl }) => {
+        const impl = pickImpl("kagi_search_fetch", mode, args.impl);
+        if (impl === "api") {
+          paid.search += 1;
+          return {
+            query: args.q,
+            results: urls.map((url, i) => ({
+              rank: i + 1,
+              url,
+              title: `Title ${i}`,
+              snippet: `Snippet ${i}`,
+            })),
+            meta: { impl: "api", cache_hit: false, elapsed_ms: 1, cost_cents: SEARCH_CENTS },
+          };
+        }
+        return searchResult(urls);
+      }),
+      summarize: vi.fn(async (args: { impl?: KagiImpl }) => {
+        const impl = pickImpl("kagi_summarize_url", mode, args.impl);
+        if (impl === "api") paid.summarize += 1;
+        return {
+          summary: "a summary",
+          meta: {
+            impl,
+            cache_hit: false,
+            elapsed_ms: 1,
+            ...(impl === "api" ? { cost_cents: SUMMARIZE_CENTS } : {}),
+          },
+        };
+      }),
+      fastGPT: vi.fn(async (args: { impl?: KagiImpl }) => {
+        const impl = pickImpl("kagi_fastgpt", mode, args.impl);
+        if (impl === "api") paid.fastgpt += 1;
+        fastgptCalls += 1;
+        return { answer: fastgptCalls === 1 ? (opts.planAnswer ?? "") : "synthesized report" };
+      }),
+      ...(opts.extract !== undefined ? { extract: opts.extract } : {}),
+    });
+    return { client, paid };
+  }
+
+  const emittedCost = (stage?: string) =>
+    emitted
+      .filter((e) => stage === undefined || e.stage === stage)
+      .reduce((sum, e) => sum + (e.cost ?? 0), 0);
+  const spentFromEmitted = async () => emittedCost();
+
+  it("api-only mode with budget 0 makes zero billable calls", async () => {
+    const { client, paid } = makeBillingClient("api");
+
+    const result = await runPipeline(client, makeState(), emit, makeAccessors());
+
+    expect(paid).toEqual({ search: 0, summarize: 0, fastgpt: 0 });
+    expect(client.extract).not.toHaveBeenCalled();
+    expect(result.citations).toEqual([]);
+    expect(result.report_markdown).toBe("No source material was gathered for this question.");
+  });
+
+  it("api-only mode with allowApi=true but budget 0 still makes zero billable calls", async () => {
+    const { client, paid } = makeBillingClient("api");
+
+    await runPipeline(
+      client,
+      makeState(),
+      emit,
+      makeAccessors({ allowApi: () => true, budgetCents: () => 0 }),
+    );
+
+    expect(paid).toEqual({ search: 0, summarize: 0, fastgpt: 0 });
+    expect(client.extract).not.toHaveBeenCalled();
+  });
+
+  it("api-only mode with allowApi=false makes zero billable calls even with a budget", async () => {
+    const { client, paid } = makeBillingClient("api");
+
+    await runPipeline(
+      client,
+      makeState(),
+      emit,
+      makeAccessors({ allowApi: () => false, budgetCents: () => 100 }),
+    );
+
+    expect(paid).toEqual({ search: 0, summarize: 0, fastgpt: 0 });
+    expect(client.extract).not.toHaveBeenCalled();
+  });
+
+  it.each(["hybrid", "scrape"] as const)(
+    "%s mode with budget 0 stays on the free path and still answers",
+    async (mode) => {
+      const { client, paid } = makeBillingClient(mode);
+
+      const result = await runPipeline(client, makeState(), emit, makeAccessors());
+
+      expect(paid).toEqual({ search: 0, summarize: 0, fastgpt: 0 });
+      expect(result.citations.length).toBeGreaterThan(0);
+    },
+  );
+
+  it("books search meta.cost_cents into the emitted step costs", async () => {
+    const { client, paid } = makeBillingClient("api");
+
+    await runPipeline(
+      client,
+      makeState(),
+      emit,
+      makeAccessors({ allowApi: () => true, budgetCents: () => 100, spentCents: spentFromEmitted }),
+    );
+
+    expect(paid.search).toBe(1);
+    expect(emittedCost("searching")).toBeCloseTo(SEARCH_CENTS);
+    // Extract was already booked at 0.4; the run total must be the sum of
+    // the two, counted once each.
+    expect(emittedCost()).toBeCloseTo(SEARCH_CENTS + 0.4);
+  });
+
+  it("books summarize meta.cost_cents when the extract fallback runs", async () => {
+    const { client, paid } = makeBillingClient("api", {
+      urls: ["https://a.example/1", "https://a.example/2"],
+      extract: vi.fn().mockRejectedValue(new KagiUpstreamError(502, "Bad Gateway")),
+    });
+
+    await runPipeline(
+      client,
+      makeState(),
+      emit,
+      makeAccessors({ allowApi: () => true, budgetCents: () => 200, spentCents: spentFromEmitted }),
+    );
+
+    expect(paid.summarize).toBe(2);
+    expect(emittedCost("searching")).toBeCloseTo(SEARCH_CENTS);
+    expect(emittedCost("extracting")).toBeCloseTo(2 * SUMMARIZE_CENTS);
+  });
+
+  it("does not overspend a small budget across concurrent sub-queries", async () => {
+    const { client, paid } = makeBillingClient("api", {
+      planAnswer: "1. a\n2. b\n3. c\n4. d\n5. e",
+    });
+
+    await runPipeline(
+      client,
+      makeState(),
+      emit,
+      makeAccessors({ allowApi: () => true, budgetCents: () => 5, spentCents: spentFromEmitted }),
+    );
+
+    // 5 sub-queries at 1.2c would be 6c against a 5c budget. Whatever the
+    // reservation bookkeeping, the batch must stop short of all five and
+    // book exactly what it spent — no more, no less.
+    expect(paid.search).toBeGreaterThanOrEqual(1);
+    expect(paid.search).toBeLessThan(5);
+    expect(paid.search * SEARCH_CENTS).toBeLessThanOrEqual(5);
+    expect(emittedCost("searching")).toBeCloseTo(paid.search * SEARCH_CENTS);
+  });
+
+  it("makes no paid search when the budget is below one search's cost", async () => {
+    const { client, paid } = makeBillingClient("api");
+
+    await runPipeline(
+      client,
+      makeState(),
+      emit,
+      makeAccessors({ allowApi: () => true, budgetCents: () => 1, spentCents: spentFromEmitted }),
+    );
+
+    expect(paid.search).toBe(0);
+    expect(paid.summarize).toBe(0);
+  });
+
+  it("affords exactly one search when the budget exactly covers it", async () => {
+    const { client, paid } = makeBillingClient("api");
+
+    await runPipeline(
+      client,
+      makeState(),
+      emit,
+      makeAccessors({
+        allowApi: () => true,
+        budgetCents: () => SEARCH_CENTS,
+        spentCents: spentFromEmitted,
+      }),
+    );
+
+    expect(paid.search).toBe(1);
+    expect(paid.summarize).toBe(0);
+    expect(emittedCost()).toBeLessThanOrEqual(SEARCH_CENTS + 1e-9);
+  });
+
+  it("re-checks the budget before the summarize fallback after search spent it", async () => {
+    const { client, paid } = makeBillingClient("api");
+
+    await runPipeline(
+      client,
+      makeState(),
+      emit,
+      makeAccessors({ allowApi: () => true, budgetCents: () => 2, spentCents: spentFromEmitted }),
+    );
+
+    // The 1.2c search fits; a 30c summarize does not. The fallback path
+    // must not become a second, unchecked spend.
+    expect(paid.search).toBe(1);
+    expect(paid.summarize).toBe(0);
   });
 });
 

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { resolveMode } from "../../src/kagi/mode";
+import { KagiNotConfiguredError } from "../../src/kagi/errors";
 import type { Env } from "../../src/env";
 
 function env(overrides: Partial<Env> = {}): Env {
@@ -51,6 +52,33 @@ describe("resolveMode", () => {
 
   it("auto with neither credential throws", () => {
     expect(() => resolveMode(env())).toThrow(/No Kagi credentials/);
+  });
+
+  // A missing-credentials deploy is an operator-fixable setup error, not an
+  // internal failure: it must be typed so REST/MCP can surface the actionable
+  // message (ADR 0012 kind not_configured -> 503) instead of a generic 500.
+  it("auto with neither credential throws KagiNotConfiguredError naming the fix", () => {
+    let thrown: unknown;
+    try {
+      resolveMode(env());
+    } catch (e) {
+      thrown = e;
+    }
+    expect(thrown).toBeInstanceOf(KagiNotConfiguredError);
+    expect((thrown as KagiNotConfiguredError).kind).toBe("not_configured");
+    expect((thrown as Error).message).toMatch(/KAGI_SESSION_TOKEN|KAGI_API_KEY/);
+  });
+
+  it("an unknown KAGI_MODE throws KagiNotConfiguredError", () => {
+    let thrown: unknown;
+    try {
+      resolveMode(env({ KAGI_MODE: "yolo" }));
+    } catch (e) {
+      thrown = e;
+    }
+    expect(thrown).toBeInstanceOf(KagiNotConfiguredError);
+    expect((thrown as KagiNotConfiguredError).kind).toBe("not_configured");
+    expect((thrown as Error).message).toMatch(/Invalid KAGI_MODE/);
   });
 
   it("defaults to auto when KAGI_MODE is unset", () => {

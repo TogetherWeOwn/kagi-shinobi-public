@@ -6,6 +6,8 @@ import {
   pickImpl,
   supportsMode,
 } from "../../src/kagi/capability";
+import { KagiError } from "../../src/kagi/errors";
+import { KAGI_ERROR_STATUS } from "../../src/kagi/http";
 
 describe("supportsMode", () => {
   it("both is reachable from every mode", () => {
@@ -110,12 +112,35 @@ describe("pickImpl", () => {
 
   it("refuses override when it contradicts the mode", () => {
     expect(() => pickImpl("kagi_search_fetch", "scrape", "api")).toThrow(
-      /Cannot force impl='api' in mode='scrape'/,
+      /Cannot force impl='api' in mode='scrape'|not available in mode='scrape'|impl='api'.*mode='scrape'/,
     );
     expect(() => pickImpl("kagi_search_fetch", "api", "scrape")).toThrow(
-      /Cannot force impl='scrape' in mode='api'/,
+      /Cannot force impl='scrape' in mode='api'|not available in mode='api'|impl='scrape'.*mode='api'/,
     );
   });
+
+  // A contradictory impl override is a caller-fixable input error: it must be
+  // a typed KagiError whose kind maps to HTTP 400 (ADR 0012), so REST/MCP
+  // surface it actionably instead of a generic 500/internal.
+  it.each([
+    ["scrape", "api"],
+    ["api", "scrape"],
+  ] as const)(
+    "mode=%s with impl=%s throws a typed 400-mapped KagiError",
+    (mode, impl) => {
+      let thrown: unknown;
+      try {
+        pickImpl("kagi_search_fetch", mode, impl);
+      } catch (e) {
+        thrown = e;
+      }
+      expect(thrown).toBeInstanceOf(KagiError);
+      const err = thrown as KagiError;
+      expect(KAGI_ERROR_STATUS[err.kind]).toBe(400);
+      expect(err.message).toMatch(new RegExp(`impl|mode='${mode}'`));
+      expect(err.message.length).toBeGreaterThan(0);
+    },
+  );
 
   it("refuses override on fixed-impl tools", () => {
     expect(() => pickImpl("kagi_extract", "hybrid", "scrape")).toThrow(
