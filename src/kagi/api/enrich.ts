@@ -34,12 +34,21 @@ async function enrich(
 ): Promise<EnrichResponse> {
   const start_ms = Date.now();
   const guard = await guardBillable(env, CENTS_PER_CALL);
-  const url = `https://kagi.com/api/v0/enrich/${vertical}?q=${encodeURIComponent(args.q)}`;
-  const client = new KagiApiClient(env);
-  const wire = await client.request<V0EnrichItem[]>({
-    method: "GET",
-    url,
-  });
+  // Past the guard the projected charge is reserved; a dispatch/decode throw
+  // must carry it so budget-keeping callers book the debit (see
+  // withChargedCost). Only the request phase is tagged at the projection —
+  // after settle the actual charge (0 on empty) is what a mapping throw owes.
+  let wire;
+  try {
+    const url = `https://kagi.com/api/v0/enrich/${vertical}?q=${encodeURIComponent(args.q)}`;
+    const client = new KagiApiClient(env);
+    wire = await client.request<V0EnrichItem[]>({
+      method: "GET",
+      url,
+    });
+  } catch (err) {
+    throw withChargedCost(err, CENTS_PER_CALL);
+  }
   const items = wire.data;
   const nonZero = items.length > 0;
   // Docs: bill only when non-zero results are returned.

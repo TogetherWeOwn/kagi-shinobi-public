@@ -62,6 +62,40 @@ export class KagiUpstreamError extends KagiError {
   }
 }
 
+// Our own reason phrases for upstream statuses. A remote `statusText` is
+// attacker-influenced upstream text like a response body, and a typed
+// error's message/detail are client-visible — so producers that hold a live
+// Response must phrase it from this allowlist, never copy `res.statusText`.
+// Direct construction with caller-owned text (a stream-level "[ERROR]"
+// marker, a test double) is a separate contract and stays as-is.
+const STATUS_PHRASES: Record<number, string> = {
+  400: "Bad Request",
+  401: "Unauthorized",
+  402: "Payment Required",
+  403: "Forbidden",
+  404: "Not Found",
+  405: "Method Not Allowed",
+  408: "Request Timeout",
+  409: "Conflict",
+  410: "Gone",
+  422: "Unprocessable Entity",
+  429: "Too Many Requests",
+  500: "Internal Server Error",
+  501: "Not Implemented",
+  502: "Bad Gateway",
+  503: "Service Unavailable",
+  504: "Gateway Timeout",
+};
+
+export function safeStatusPhrase(status: number): string {
+  return STATUS_PHRASES[status] ?? "Upstream error";
+}
+
+/** KagiUpstreamError for a live non-OK Response: numeric status only. */
+export function upstreamErrorFromResponse(status: number): KagiUpstreamError {
+  return new KagiUpstreamError(status, safeStatusPhrase(status));
+}
+
 export class KagiParseError extends KagiError {
   constructor(msg: string, detail: KagiErrorDetail = {}) {
     super("parse", msg, detail);
@@ -144,17 +178,21 @@ export function safeErrorMessage(err: unknown): string {
 }
 
 /**
- * Cents a billable call had already settled when it threw. The API wrappers
- * settle their monthly-cap charge before normalizing the response, so a
- * normalization failure is still a paid call — but only the wrapper knows
- * the charge landed. It tags the thrown value with `withChargedCost` so a
- * budget-keeping caller (the research pipeline) can book the debit via
- * `chargedCostCents` instead of treating every failure as free. Failures
- * thrown before settle (upstream HTTP errors, budget refusals) carry no
- * tag and book nothing. Non-enumerable: the tag is bookkeeping, never part
- * of a serialized error seen by clients.
+ * Cents a dispatched billable call owes the run ledger when it throws. The
+ * monthly guard reserves the projected charge before dispatch and an
+ * unsettled reservation stays on its books (see api/cost.ts), so ANY throw
+ * after the guard admitted the call — an undecodable or null envelope, an
+ * HTTP-error status, a transport rejection, or a normalization failure
+ * after settle — is potentially billed and must book the projected cents.
+ * Only the wrapper knows the guard admitted the call, so it tags the thrown
+ * value with `withChargedCost` for budget-keeping callers (the research
+ * pipeline) to book via `chargedCostCents`. A guard refusal itself throws
+ * before any reservation or dispatch and is never tagged. First tag wins,
+ * so an error crossing two tag sites is never re-priced. Non-enumerable:
+ * the tag is bookkeeping, never part of a serialized error seen by clients.
  */
 export function withChargedCost<T>(err: T, cents: number): T {
+  if (chargedCostCents(err) !== undefined) return err;
   if (err !== null && (typeof err === "object" || typeof err === "function")) {
     try {
       Object.defineProperty(err, "charged_cost_cents", {

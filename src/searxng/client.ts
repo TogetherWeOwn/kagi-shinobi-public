@@ -22,7 +22,7 @@
 // itself is a var, not a secret; the credentials are secrets.
 
 import type { Env } from "../env.js";
-import { KagiError, KagiNotConfiguredError } from "../kagi/errors.js";
+import { KagiError, KagiNotConfiguredError, safeStatusPhrase } from "../kagi/errors.js";
 import type { SearchResponse, SearchResult } from "../kagi/types.js";
 import { buildMeta } from "../mcp/meta.js";
 import { domainFromUrl } from "../util/url.js";
@@ -99,12 +99,13 @@ export class SearxngClient {
     try {
       const response = await fetch(url, { headers, signal: controller.signal });
       if (!response.ok) {
-        // Status + reason phrase only, never the raw body — a typed
-        // KagiError's message is client-visible (see safeErrorMessage).
+        // Numeric status + our allowlisted phrase only, never the raw body
+        // or the remote reason phrase — a typed KagiError's message/detail
+        // are client-visible (see safeErrorMessage).
         throw new KagiError(
           "upstream",
-          `SearXNG answered HTTP ${response.status}: ${response.statusText || "Upstream error"}`,
-          { status: response.status, status_text: response.statusText },
+          `SearXNG answered HTTP ${response.status}: ${safeStatusPhrase(response.status)}`,
+          { status: response.status, status_text: safeStatusPhrase(response.status) },
         );
       }
       wire = (await response.json()) as SearxngJsonResponse;

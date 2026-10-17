@@ -23,20 +23,21 @@ export async function apiFastGPT(env: Env, args: ApiFastGPTArgs): Promise<FastGP
   // We can't know upfront whether the call will hit cache, so guard the full
   // projected charge; settle with 0 later if we can detect a cache hit.
   const guard = await guardBillable(env, CENTS_PER_CALL);
-  const req: V0FastGPTRequest = { query: args.query, cache };
-  const client = new KagiApiClient(env);
-  const wire = await client.request<V0FastGPTData>({
-    method: "POST",
-    url: FASTGPT_URL,
-    body: req,
-  });
-  // The docs don't currently return an explicit cache-hit flag on FastGPT.
-  // Bill conservatively: charge the full amount and let the operator reconcile
-  // via Kagi's monthly usage report if desired.
-  await guard.settle(CENTS_PER_CALL);
-  // Past settle the call is paid for; a mapping throw must carry the charge
-  // so budget-keeping callers book it (see withChargedCost).
+  // Past the guard the projected charge is reserved; any throw from here —
+  // dispatch, decode or mapping — must carry it so budget-keeping callers
+  // book the debit (see withChargedCost).
   try {
+    const req: V0FastGPTRequest = { query: args.query, cache };
+    const client = new KagiApiClient(env);
+    const wire = await client.request<V0FastGPTData>({
+      method: "POST",
+      url: FASTGPT_URL,
+      body: req,
+    });
+    // The docs don't currently return an explicit cache-hit flag on FastGPT.
+    // Bill conservatively: charge the full amount and let the operator reconcile
+    // via Kagi's monthly usage report if desired.
+    await guard.settle(CENTS_PER_CALL);
     return {
       query: args.query,
       answer: wire.data.output,

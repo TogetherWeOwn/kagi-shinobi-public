@@ -23,6 +23,7 @@ import {
   KagiCaptchaError,
   KagiParseError,
   KagiUpstreamError,
+  upstreamErrorFromResponse,
 } from "../errors.js";
 import type { FastGPTReference, FastGPTResponse } from "../types.js";
 
@@ -52,7 +53,7 @@ export async function scrapeFastGPT(
   });
 
   if (res.status === 401 || res.status === 403) throw new KagiAuthError();
-  if (!res.ok) throw new KagiUpstreamError(res.status, res.statusText);
+  if (!res.ok) throw upstreamErrorFromResponse(res.status);
 
   const body = await res.text();
   const finalPayload = parseSseFinalPayload(body);

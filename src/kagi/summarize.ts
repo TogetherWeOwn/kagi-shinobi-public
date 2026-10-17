@@ -1,7 +1,7 @@
 // Ported from czottmann/kagi-ken@1.3.0 src/summarize.js (MIT).
 // Changes: TypeScript, Chrome headers instead of Safari, KagiAuthError on 401/403.
 import { chromeHeaders } from "./headers.js";
-import { KagiAuthError, KagiParseError, KagiUpstreamError } from "./errors.js";
+import { KagiAuthError, KagiParseError, upstreamErrorFromResponse } from "./errors.js";
 import { isSupportedLanguage, SUPPORTED_LANGUAGES } from "./languages.js";
 
 export type SummaryType = "summary" | "takeaway";
@@ -80,7 +80,7 @@ export async function summarize(
     if (response.status === 401 || response.status === 403) {
       throw new KagiAuthError();
     }
-    throw new KagiUpstreamError(response.status, response.statusText);
+    throw upstreamErrorFromResponse(response.status);
   }
 
   const streamData = await response.text();

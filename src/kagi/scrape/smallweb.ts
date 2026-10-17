@@ -13,7 +13,7 @@
 // silently empty the tool.
 
 import { chromeHeaders } from "../headers.js";
-import { KagiAuthError, KagiParseError, KagiUpstreamError } from "../errors.js";
+import { KagiAuthError, KagiParseError, upstreamErrorFromResponse } from "../errors.js";
 import type { SearchResponse, SearchResult } from "../types.js";
 import { buildMeta } from "../../mcp/meta.js";
 import { domainFromUrl } from "../../util/url.js";
@@ -38,7 +38,7 @@ export async function fetchSmallWebRss(limit = 25): Promise<SmallWebRssResult> {
     }),
   });
   if (!res.ok) {
-    throw new KagiUpstreamError(res.status, res.statusText);
+    throw upstreamErrorFromResponse(res.status);
   }
   const xml = await res.text();
   return { items: parseFeed(xml, limit) };
@@ -198,7 +198,7 @@ export async function scrapeSmallWeb(
     }),
   });
   if (res.status === 401 || res.status === 403) throw new KagiAuthError();
-  if (!res.ok) throw new KagiUpstreamError(res.status, res.statusText);
+  if (!res.ok) throw upstreamErrorFromResponse(res.status);
   const html = await res.text();
   // Reuse the general search parser so any markup change is fixed once.
   const { parseSearchResults } = await import("../search.js");

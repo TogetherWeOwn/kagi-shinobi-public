@@ -7,7 +7,7 @@
 // header is preferred but we fall back so operators can still correlate.
 
 import type { Env } from "../../env.js";
-import { KagiError, KagiNotConfiguredError, KagiUpstreamError } from "../errors.js";
+import { KagiError, KagiNotConfiguredError, upstreamErrorFromResponse } from "../errors.js";
 import { takeKagiCall } from "../budget.js";
 
 export interface KagiApiRequest {
@@ -80,15 +80,13 @@ export class KagiApiClient {
         response.headers.get("x-kagi-trace") ??
         undefined;
       if (!response.ok) {
-        // Never the raw body: KagiUpstreamError's message/detail are part of
-        // the client-visible typed vocabulary (REST/MCP/research return
-        // them), and an upstream error body is arbitrary third-party text
-        // that can carry tokens, paths or stack fragments. Status + reason
-        // phrase is the whole contract, as in the scrape paths.
-        throw new KagiUpstreamError(
-          response.status,
-          response.statusText || "Upstream error",
-        );
+        // Never the raw body or the remote reason phrase:
+        // KagiUpstreamError's message/detail are part of the client-visible
+        // typed vocabulary (REST/MCP/research return them), and both are
+        // arbitrary third-party text that can carry tokens, paths or stack
+        // fragments. Numeric status + our allowlisted phrase is the whole
+        // contract, as in the scrape paths.
+        throw upstreamErrorFromResponse(response.status);
       }
       const envelope = (await response.json()) as Envelope<T>;
       return {

@@ -61,17 +61,17 @@ export async function apiSummarize(
   if (args.kind === "url") req.url = args.ref;
   else req.text = args.ref;
 
-  const client = new KagiApiClient(env);
-  const wire = await client.request<V0SummarizeData>({
-    method: "POST",
-    url: SUMMARIZE_URL,
-    body: req,
-  });
-  await guard.settle(projected);
-
-  // Past settle the call is paid for; a mapping throw must carry the charge
-  // so budget-keeping callers book it (see withChargedCost).
+  // Past the guard the projected charge is reserved; any throw from here —
+  // dispatch, decode or mapping — must carry it so budget-keeping callers
+  // book the debit (see withChargedCost).
   try {
+    const client = new KagiApiClient(env);
+    const wire = await client.request<V0SummarizeData>({
+      method: "POST",
+      url: SUMMARIZE_URL,
+      body: req,
+    });
+    await guard.settle(projected);
     return {
       source: { kind: args.kind, ref: args.ref },
       summary: wire.data.output,

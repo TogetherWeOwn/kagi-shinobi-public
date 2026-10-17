@@ -7,7 +7,7 @@ import {
   KagiAuthError,
   KagiMarkupChangedError,
   KagiParseError,
-  KagiUpstreamError,
+  upstreamErrorFromResponse,
 } from "./errors.js";
 
 export interface SearchResultItem {
@@ -57,7 +57,7 @@ export async function search(
     if (response.status === 401 || response.status === 403) {
       throw new KagiAuthError();
     }
-    throw new KagiUpstreamError(response.status, response.statusText);
+    throw upstreamErrorFromResponse(response.status);
   }
 
   const html = await response.text();

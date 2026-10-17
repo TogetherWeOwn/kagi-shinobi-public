@@ -31,22 +31,23 @@ export async function apiExtract(env: Env, args: ApiExtractArgs): Promise<Extrac
   const start_ms = Date.now();
   const projected = CENTS_PER_URL * args.urls.length;
   const guard = await guardBillable(env, projected);
-  const req: V1ExtractRequest = {
-    urls: args.urls,
-    format: args.format ?? "markdown",
-    timeout: args.timeout_ms ? Math.round(args.timeout_ms / 1000) : undefined,
-  };
-  const client = new KagiApiClient(env);
-  const wire = await client.request<V1ExtractData>({
-    method: "POST",
-    url: EXTRACT_URL,
-    body: req,
-    timeout_ms: args.timeout_ms ?? 30_000,
-  });
-  await guard.settle(projected);
-  // Past settle the call is paid for; a mapping throw must carry the charge
-  // so budget-keeping callers book it (see withChargedCost).
+  // Past the guard the projected charge is reserved; any throw from here —
+  // dispatch, decode or mapping — must carry it so budget-keeping callers
+  // book the debit (see withChargedCost).
   try {
+    const req: V1ExtractRequest = {
+      urls: args.urls,
+      format: args.format ?? "markdown",
+      timeout: args.timeout_ms ? Math.round(args.timeout_ms / 1000) : undefined,
+    };
+    const client = new KagiApiClient(env);
+    const wire = await client.request<V1ExtractData>({
+      method: "POST",
+      url: EXTRACT_URL,
+      body: req,
+      timeout_ms: args.timeout_ms ?? 30_000,
+    });
+    await guard.settle(projected);
     return {
       pages: wire.data.pages.map((p) => ({
         url: p.url,

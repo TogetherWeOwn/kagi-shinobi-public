@@ -63,8 +63,9 @@ function bookSpend(tracker: SpendTracker, cents: number | undefined): void {
 }
 
 /**
- * Book a failed call's already-settled charge, when it carries one (see
- * withChargedCost in ../kagi/errors.ts), and return it so the caller emits
+ * Book a failed dispatched call's charge, when it carries one (see
+ * withChargedCost in ../kagi/errors.ts — any throw after the monthly guard
+ * admitted the call, settled or not), and return it so the caller emits
  * it on the failure step too. A paid call that throws after dispatch is
  * still a paid call: booking only fulfilled calls re-admits the same
  * balance for the next call and the run budget stops being a ceiling
