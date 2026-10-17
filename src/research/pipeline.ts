@@ -27,6 +27,44 @@ export interface StepEmit {
   (stage: ResearchStatus, detail: string, cost_cents?: number): Promise<void>;
 }
 
+/**
+ * Wrap the persistence callback so one rejected step write cannot lose a
+ * settled charge. The callback contract is record-on-success only — the
+ * Durable Object persists a step and its cost in a single SQL update, so a
+ * throw means nothing was recorded and retrying cannot double-book. A
+ * cost-bearing write that rejects is retried once immediately; if that
+ * also rejects, the debit is carried onto the next successful write (and
+ * `flush()` makes a final attempt at the end of the run) instead of
+ * aborting the pipeline or being misread as a paid-call failure. The local
+ * spend tracker has already booked the debit either way, so the run budget
+ * stays a ceiling while persistence is degraded.
+ */
+function makeReliableEmit(emit: StepEmit): { emit: StepEmit; flush: () => Promise<void> } {
+  let pendingCents = 0;
+  let lastStage: ResearchStatus = "planning";
+  const reliable: StepEmit = async (stage, detail, cost_cents) => {
+    lastStage = stage;
+    const totalCents = pendingCents + (cost_cents ?? 0);
+    const toEmit = totalCents > 0 ? totalCents : cost_cents;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        await emit(stage, detail, toEmit);
+        pendingCents = 0;
+        return;
+      } catch {
+        // One immediate retry, then carry the debit forward (below).
+      }
+    }
+    pendingCents = totalCents;
+  };
+  return {
+    emit: reliable,
+    flush: async () => {
+      if (pendingCents > 0) await reliable(lastStage, "Reconciled research spend");
+    },
+  };
+}
+
 export interface StateAccessors {
   isCancelled(): Promise<boolean>;
   spentCents(): Promise<number>;
@@ -242,8 +280,21 @@ async function extractOrSummarize(
   if (urls.length === 0) return [];
   const useApi = state.allowApi() && (await remainingCents(state, tracker)) > 5;
   if (useApi) {
+    // Only the paid call sits in this try: a failure to persist the step
+    // recording a successful extraction must not be misread as an
+    // extraction failure (which would drop the settled debit and pay again
+    // for the summarize fallback).
+    let resp: Awaited<ReturnType<KagiClient["extract"]>> | undefined;
     try {
-      const resp = await client.extract({ urls: urls.slice(0, 10) });
+      resp = await client.extract({ urls: urls.slice(0, 10) });
+    } catch (err) {
+      await emit(
+        "extracting",
+        `Extract failed, falling back to summarize: ${describe(err)}`,
+        bookChargedFailure(tracker, err),
+      );
+    }
+    if (resp) {
       bookSpend(tracker, resp.meta.cost_cents);
       await emit(
         "extracting",
@@ -251,12 +302,6 @@ async function extractOrSummarize(
         resp.meta.cost_cents,
       );
       return resp.pages.map((p) => ({ url: p.url, content: p.markdown }));
-    } catch (err) {
-      await emit(
-        "extracting",
-        `Extract failed, falling back to summarize: ${describe(err)}`,
-        bookChargedFailure(tracker, err),
-      );
     }
   }
   // Fallback / scrape-mode path: summarize each URL individually. The same
@@ -385,6 +430,30 @@ export async function runPipeline(
   citations: ResearchCitation[];
   report_markdown: string;
 }> {
+  // Every step write goes through the reliable wrapper, so a single
+  // rejected persistence write cannot abort the run or lose a debit. The
+  // flush runs in `finally`: a cancellation (or any other throw) after a
+  // debit was carried must still discharge it, or the persisted run total
+  // under-reports retained spend on exactly the abort paths. The wrapper
+  // never throws, so the flush cannot mask the original error.
+  const reliable = makeReliableEmit(emit);
+  try {
+    return await runPipelineStages(client, initial, reliable.emit, state);
+  } finally {
+    await reliable.flush();
+  }
+}
+
+async function runPipelineStages(
+  client: KagiClient,
+  initial: ResearchRunState,
+  emitStep: StepEmit,
+  state: StateAccessors,
+): Promise<{
+  plan: string[];
+  citations: ResearchCitation[];
+  report_markdown: string;
+}> {
   const question = initial.question;
   const depth = Math.max(1, Math.min(3, initial.depth || 1));
   const tracker = newSpendTracker();
@@ -392,18 +461,18 @@ export async function runPipeline(
   if (await state.isCancelled()) throw new Error("cancelled");
 
   // Plan.
-  await emit("planning", "Decomposing question into sub-queries");
+  await emitStep("planning", "Decomposing question into sub-queries");
   const { subqueries: plan, cost_cents: planCost } = await planSubqueries(
     client,
     question,
     state,
     tracker,
   );
-  await emit("planning", `Plan: ${plan.length} sub-queries`, planCost);
+  await emitStep("planning", `Plan: ${plan.length} sub-queries`, planCost);
 
   // Search all subqueries.
   if (await state.isCancelled()) throw new Error("cancelled");
-  const searchBundles = await searchAllSubqueries(client, plan, emit, state, tracker);
+  const searchBundles = await searchAllSubqueries(client, plan, emitStep, state, tracker);
 
   // Dedup URLs; keep the first appearance's title/snippet.
   const seen = new Map<string, { title: string; snippet: string }>();
@@ -416,11 +485,11 @@ export async function runPipeline(
 
   // Extract or summarize.
   if (await state.isCancelled()) throw new Error("cancelled");
-  const materials = await extractOrSummarize(client, topUrls, emit, state, tracker);
+  const materials = await extractOrSummarize(client, topUrls, emitStep, state, tracker);
 
   // Synthesize.
   if (await state.isCancelled()) throw new Error("cancelled");
-  await emit("synthesizing", "Composing report");
+  await emitStep("synthesizing", "Composing report");
   const enriched = materials.map((m) => ({
     url: m.url,
     title: seen.get(m.url)?.title ?? m.url,
@@ -434,9 +503,8 @@ export async function runPipeline(
     tracker,
   );
   if (synthCost !== undefined && synthCost > 0) {
-    await emit("synthesizing", "Composed report", synthCost);
+    await emitStep("synthesizing", "Composed report", synthCost);
   }
-
   const citations: ResearchCitation[] = enriched.map((m, i) => ({
     n: i + 1,
     title: m.title,
