@@ -99,10 +99,11 @@ export class SearxngClient {
     try {
       const response = await fetch(url, { headers, signal: controller.signal });
       if (!response.ok) {
-        const text = await response.text().catch(() => response.statusText);
+        // Status + reason phrase only, never the raw body — a typed
+        // KagiError's message is client-visible (see safeErrorMessage).
         throw new KagiError(
           "upstream",
-          `SearXNG answered HTTP ${response.status}: ${text.slice(0, 200)}`,
+          `SearXNG answered HTTP ${response.status}: ${response.statusText || "Upstream error"}`,
           { status: response.status, status_text: response.statusText },
         );
       }

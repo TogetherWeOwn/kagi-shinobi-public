@@ -142,3 +142,38 @@ export class KagiTimeoutError extends KagiError {
 export function safeErrorMessage(err: unknown): string {
   return err instanceof KagiError ? err.message : "Internal error";
 }
+
+/**
+ * Cents a billable call had already settled when it threw. The API wrappers
+ * settle their monthly-cap charge before normalizing the response, so a
+ * normalization failure is still a paid call — but only the wrapper knows
+ * the charge landed. It tags the thrown value with `withChargedCost` so a
+ * budget-keeping caller (the research pipeline) can book the debit via
+ * `chargedCostCents` instead of treating every failure as free. Failures
+ * thrown before settle (upstream HTTP errors, budget refusals) carry no
+ * tag and book nothing. Non-enumerable: the tag is bookkeeping, never part
+ * of a serialized error seen by clients.
+ */
+export function withChargedCost<T>(err: T, cents: number): T {
+  if (err !== null && (typeof err === "object" || typeof err === "function")) {
+    try {
+      Object.defineProperty(err, "charged_cost_cents", {
+        value: cents,
+        enumerable: false,
+        configurable: true,
+      });
+    } catch {
+      // A frozen thrown value cannot carry the tag; the original error
+      // still propagates unchanged.
+    }
+  }
+  return err;
+}
+
+export function chargedCostCents(err: unknown): number | undefined {
+  if (err === null || typeof err !== "object") return undefined;
+  const value = (err as { charged_cost_cents?: unknown }).charged_cost_cents;
+  return typeof value === "number" && Number.isFinite(value) && value > 0
+    ? value
+    : undefined;
+}

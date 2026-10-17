@@ -7,7 +7,7 @@ import { guardBillable } from "./cost.js";
 import type { V1ExtractData, V1ExtractRequest } from "./types.js";
 import { buildMeta } from "../../mcp/meta.js";
 import type { ExtractResponse } from "../types.js";
-import { KagiError } from "../errors.js";
+import { KagiError, withChargedCost } from "../errors.js";
 
 const EXTRACT_URL = "https://kagi.com/api/v1/extract";
 const CENTS_PER_URL = 0.4; // $4 / 1000
@@ -44,19 +44,25 @@ export async function apiExtract(env: Env, args: ApiExtractArgs): Promise<Extrac
     timeout_ms: args.timeout_ms ?? 30_000,
   });
   await guard.settle(projected);
-  return {
-    pages: wire.data.pages.map((p) => ({
-      url: p.url,
-      markdown: p.content ?? "",
-      title: p.title,
-      word_count: p.word_count,
-      props: p.props,
-    })),
-    meta: buildMeta({
-      impl: "api",
-      start_ms,
-      cost_cents: projected,
-      trace_id: wire.trace_id,
-    }),
-  };
+  // Past settle the call is paid for; a mapping throw must carry the charge
+  // so budget-keeping callers book it (see withChargedCost).
+  try {
+    return {
+      pages: wire.data.pages.map((p) => ({
+        url: p.url,
+        markdown: p.content ?? "",
+        title: p.title,
+        word_count: p.word_count,
+        props: p.props,
+      })),
+      meta: buildMeta({
+        impl: "api",
+        start_ms,
+        cost_cents: projected,
+        trace_id: wire.trace_id,
+      }),
+    };
+  } catch (err) {
+    throw withChargedCost(err, projected);
+  }
 }

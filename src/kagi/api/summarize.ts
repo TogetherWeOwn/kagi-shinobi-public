@@ -16,7 +16,7 @@ import { guardBillable } from "./cost.js";
 import type { V0SummarizeData, V0SummarizeRequest } from "./types.js";
 import { buildMeta } from "../../mcp/meta.js";
 import type { SummarizeResponse, SummarizerEngine, SummaryStyle } from "../types.js";
-import { KagiConfirmRequiredError, KagiError } from "../errors.js";
+import { KagiConfirmRequiredError, KagiError, withChargedCost } from "../errors.js";
 
 const SUMMARIZE_URL = "https://kagi.com/api/v0/summarize";
 const CECIL_AGNES_CAP_CENTS = 30;
@@ -69,19 +69,25 @@ export async function apiSummarize(
   });
   await guard.settle(projected);
 
-  return {
-    source: { kind: args.kind, ref: args.ref },
-    summary: wire.data.output,
-    engine_used: engine,
-    target_language: args.language,
-    tokens: wire.data.tokens,
-    meta: buildMeta({
-      impl: "api",
-      start_ms,
-      cost_cents: projected,
-      trace_id: wire.trace_id,
-    }),
-  };
+  // Past settle the call is paid for; a mapping throw must carry the charge
+  // so budget-keeping callers book it (see withChargedCost).
+  try {
+    return {
+      source: { kind: args.kind, ref: args.ref },
+      summary: wire.data.output,
+      engine_used: engine,
+      target_language: args.language,
+      tokens: wire.data.tokens,
+      meta: buildMeta({
+        impl: "api",
+        start_ms,
+        cost_cents: projected,
+        trace_id: wire.trace_id,
+      }),
+    };
+  } catch (err) {
+    throw withChargedCost(err, projected);
+  }
 }
 
 function pickEngine(engine: SummarizerEngine | undefined): "cecil" | "agnes" | "daphne" | "muriel" {

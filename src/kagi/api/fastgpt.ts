@@ -6,6 +6,7 @@ import { KagiApiClient } from "./client.js";
 import { guardBillable } from "./cost.js";
 import type { V0FastGPTData, V0FastGPTRequest } from "./types.js";
 import { buildMeta } from "../../mcp/meta.js";
+import { withChargedCost } from "../errors.js";
 import type { FastGPTResponse } from "../types.js";
 
 const FASTGPT_URL = "https://kagi.com/api/v0/fastgpt";
@@ -33,20 +34,26 @@ export async function apiFastGPT(env: Env, args: ApiFastGPTArgs): Promise<FastGP
   // Bill conservatively: charge the full amount and let the operator reconcile
   // via Kagi's monthly usage report if desired.
   await guard.settle(CENTS_PER_CALL);
-  return {
-    query: args.query,
-    answer: wire.data.output,
-    references: (wire.data.references ?? []).map((r) => ({
-      title: r.title,
-      url: r.url,
-      snippet: r.snippet,
-    })),
-    tokens: wire.data.tokens,
-    meta: buildMeta({
-      impl: "api",
-      start_ms,
-      cost_cents: CENTS_PER_CALL,
-      trace_id: wire.trace_id,
-    }),
-  };
+  // Past settle the call is paid for; a mapping throw must carry the charge
+  // so budget-keeping callers book it (see withChargedCost).
+  try {
+    return {
+      query: args.query,
+      answer: wire.data.output,
+      references: (wire.data.references ?? []).map((r) => ({
+        title: r.title,
+        url: r.url,
+        snippet: r.snippet,
+      })),
+      tokens: wire.data.tokens,
+      meta: buildMeta({
+        impl: "api",
+        start_ms,
+        cost_cents: CENTS_PER_CALL,
+        trace_id: wire.trace_id,
+      }),
+    };
+  } catch (err) {
+    throw withChargedCost(err, CENTS_PER_CALL);
+  }
 }

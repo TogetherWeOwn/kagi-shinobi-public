@@ -9,6 +9,7 @@ import { KagiApiClient } from "./client.js";
 import { guardBillable } from "./cost.js";
 import type { V1SearchData, V1SearchItem, V1SearchRequest } from "./types.js";
 import { buildMeta } from "../../mcp/meta.js";
+import { withChargedCost } from "../errors.js";
 import type { SearchBuckets, SearchResponse, SearchResult } from "../types.js";
 import { domainFromUrl } from "../../util/url.js";
 
@@ -30,7 +31,13 @@ export async function apiSearch(
     body: req,
   });
   await guard.settle(CENTS_PER_CALL);
-  return normalize(req.query, wire.data, wire.trace_id, start_ms);
+  // Past settle the call is paid for; a normalization throw must carry the
+  // charge so budget-keeping callers book it (see withChargedCost).
+  try {
+    return normalize(req.query, wire.data, wire.trace_id, start_ms);
+  } catch (err) {
+    throw withChargedCost(err, CENTS_PER_CALL);
+  }
 }
 
 function normalize(

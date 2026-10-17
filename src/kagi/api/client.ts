@@ -80,8 +80,15 @@ export class KagiApiClient {
         response.headers.get("x-kagi-trace") ??
         undefined;
       if (!response.ok) {
-        const text = await response.text().catch(() => response.statusText);
-        throw new KagiUpstreamError(response.status, text.slice(0, 500));
+        // Never the raw body: KagiUpstreamError's message/detail are part of
+        // the client-visible typed vocabulary (REST/MCP/research return
+        // them), and an upstream error body is arbitrary third-party text
+        // that can carry tokens, paths or stack fragments. Status + reason
+        // phrase is the whole contract, as in the scrape paths.
+        throw new KagiUpstreamError(
+          response.status,
+          response.statusText || "Upstream error",
+        );
       }
       const envelope = (await response.json()) as Envelope<T>;
       return {

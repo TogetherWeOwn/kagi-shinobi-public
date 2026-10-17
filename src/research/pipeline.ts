@@ -8,7 +8,7 @@
 
 import type { KagiClient } from "../kagi/client.js";
 import { capabilityFor, pickImpl } from "../kagi/capability.js";
-import { safeErrorMessage } from "../kagi/errors.js";
+import { chargedCostCents, safeErrorMessage } from "../kagi/errors.js";
 import type { KagiImpl } from "../kagi/types.js";
 import type {
   ResearchCitation,
@@ -60,6 +60,20 @@ function bookSpend(tracker: SpendTracker, cents: number | undefined): void {
   if (cents !== undefined && Number.isFinite(cents) && cents > 0) {
     tracker.bookedLocalCents += cents;
   }
+}
+
+/**
+ * Book a failed call's already-settled charge, when it carries one (see
+ * withChargedCost in ../kagi/errors.ts), and return it so the caller emits
+ * it on the failure step too. A paid call that throws after dispatch is
+ * still a paid call: booking only fulfilled calls re-admits the same
+ * balance for the next call and the run budget stops being a ceiling
+ * exactly on the failure paths.
+ */
+function bookChargedFailure(tracker: SpendTracker, err: unknown): number | undefined {
+  const cents = chargedCostCents(err);
+  bookSpend(tracker, cents);
+  return cents;
 }
 
 /** True when this run may not spend at all: free scrape path only. */
@@ -124,8 +138,8 @@ async function planSubqueries(
       .filter((s) => s.length > 0 && s.length < 200)
       .slice(0, MAX_SUBQUERIES);
     return { subqueries: subqueries.length > 0 ? subqueries : [question], cost_cents: cost };
-  } catch {
-    return { subqueries: [question] };
+  } catch (err) {
+    return { subqueries: [question], cost_cents: bookChargedFailure(tracker, err) };
   }
 }
 
@@ -166,7 +180,11 @@ async function searchAllSubqueries(
       bookSpend(tracker, cost);
       await emit("searching", `Found ${urls.length} results for "${subquery}"`, cost);
     } else {
-      await emit("searching", `Search failed for "${subquery}": ${describe(settled.reason)}`);
+      await emit(
+        "searching",
+        `Search failed for "${subquery}": ${describe(settled.reason)}`,
+        bookChargedFailure(tracker, settled.reason),
+      );
     }
   };
 
@@ -223,7 +241,11 @@ async function extractOrSummarize(
       );
       return resp.pages.map((p) => ({ url: p.url, content: p.markdown }));
     } catch (err) {
-      await emit("extracting", `Extract failed, falling back to summarize: ${describe(err)}`);
+      await emit(
+        "extracting",
+        `Extract failed, falling back to summarize: ${describe(err)}`,
+        bookChargedFailure(tracker, err),
+      );
     }
   }
   // Fallback / scrape-mode path: summarize each URL individually. The same
@@ -251,6 +273,8 @@ async function extractOrSummarize(
         results.push({ url: batch[i], content: s.value.summary });
         bookSpend(tracker, s.value.meta?.cost_cents);
         totalCost += s.value.meta?.cost_cents ?? 0;
+      } else {
+        totalCost += bookChargedFailure(tracker, s.reason) ?? 0;
       }
     }
   } else {
@@ -261,8 +285,10 @@ async function extractOrSummarize(
         results.push({ url, content: resp.summary });
         bookSpend(tracker, resp.meta?.cost_cents);
         totalCost += resp.meta?.cost_cents ?? 0;
-      } catch {
-        // Counted in the denominator below; a failed call books nothing.
+      } catch (err) {
+        // Counted in the denominator below; a charge settled before the
+        // failure is still booked (and emitted via totalCost).
+        totalCost += bookChargedFailure(tracker, err) ?? 0;
       }
     }
   }
@@ -284,6 +310,7 @@ async function synthesize(
   if (materials.length === 0) {
     return { report: "No source material was gathered for this question." };
   }
+  let synthFailureCost: number | undefined;
   const impl = implFor(client, "kagi_fastgpt");
   const canFastGPT =
     state.allowApi() &&
@@ -303,8 +330,10 @@ async function synthesize(
       const cost = resp.meta?.cost_cents;
       bookSpend(tracker, cost);
       return { report: resp.answer, cost_cents: cost };
-    } catch {
-      // fall through
+    } catch (err) {
+      // Fall through to the deterministic report — but a charge settled
+      // before the failure is still booked and reported to the caller.
+      synthFailureCost = bookChargedFailure(tracker, err);
     }
   }
   // Deterministic fallback: concatenate. Not pretty, but keeps the pipeline
@@ -317,7 +346,7 @@ async function synthesize(
     lines.push(m.content.slice(0, 1500));
     lines.push("");
   });
-  return { report: lines.join("\n") };
+  return { report: lines.join("\n"), cost_cents: synthFailureCost };
 }
 
 // Step details are returned to clients with the run state, so they get the
