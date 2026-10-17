@@ -17,7 +17,7 @@
   "dependencies": {
     "@cloudflare/puppeteer": "^1.4.0",
     "@modelcontextprotocol/client": "2.3.1",
-    "@modelcontextprotocol/sdk": "1.30.0",
+    "@modelcontextprotocol/sdk": "1.32.1",
     "@modelcontextprotocol/server": "2.3.1",
     "agents": "0.28.1",
     "cheerio": "^1.1.2",
