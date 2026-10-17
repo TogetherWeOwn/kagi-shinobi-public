@@ -1,0 +1,1434 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`advertised prompt arguments > match the recorded wire contract 1`] = `
+[
+  {
+    "arguments": [
+      {
+        "description": "The claim to verify.",
+        "name": "claim",
+        "required": true,
+      },
+    ],
+    "name": "cite_this_claim",
+  },
+  {
+    "arguments": [
+      {
+        "description": undefined,
+        "name": "query",
+        "required": true,
+      },
+    ],
+    "name": "compare_default_vs_personalized",
+  },
+  {
+    "arguments": [
+      {
+        "description": undefined,
+        "name": "question",
+        "required": true,
+      },
+      {
+        "description": "Optional cap for the paid-API steps. String because MCP prompt args are strings.",
+        "name": "budget_cents",
+        "required": false,
+      },
+    ],
+    "name": "deep_research_plan",
+  },
+  {
+    "arguments": [
+      {
+        "description": undefined,
+        "name": "query",
+        "required": true,
+      },
+      {
+        "description": "How many top URLs to extract (1-10).",
+        "name": "top_n",
+        "required": true,
+      },
+    ],
+    "name": "search_and_extract",
+  },
+  {
+    "arguments": [
+      {
+        "description": undefined,
+        "name": "url",
+        "required": true,
+      },
+    ],
+    "name": "verify_url",
+  },
+]
+`;
+
+exports[`advertised tool schemas > match the recorded wire contract in api mode 1`] = `
+[
+  {
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "q": {
+          "minLength": 1,
+          "type": "string",
+        },
+      },
+      "required": [
+        "q",
+      ],
+      "type": "object",
+    },
+    "name": "kagi_enrich_news",
+  },
+  {
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "q": {
+          "minLength": 1,
+          "type": "string",
+        },
+      },
+      "required": [
+        "q",
+      ],
+      "type": "object",
+    },
+    "name": "kagi_enrich_web",
+  },
+  {
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "format": {
+          "enum": [
+            "markdown",
+            "text",
+          ],
+          "type": "string",
+        },
+        "timeout_ms": {
+          "maximum": 120000,
+          "minimum": 1000,
+          "type": "integer",
+        },
+        "urls": {
+          "description": "1 to 10 URLs to extract.",
+          "items": {
+            "format": "uri",
+            "type": "string",
+          },
+          "maxItems": 10,
+          "minItems": 1,
+          "type": "array",
+        },
+      },
+      "required": [
+        "urls",
+      ],
+      "type": "object",
+    },
+    "name": "kagi_extract",
+  },
+  {
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "cache": {
+          "description": "Allow a cached answer (default: true; cached responses are free). API-only.",
+          "type": "boolean",
+        },
+        "impl": {
+          "description": "Override which implementation handles this call. Hybrid default is scrape (free).",
+          "enum": [
+            "scrape",
+            "api",
+          ],
+          "type": "string",
+        },
+        "max_age_s": {
+          "description": "Oldest acceptable cached result, in seconds (default: the cache TTL — search 24h, fastgpt 6h, summaries 7d). 0 skips the cache and fetches fresh.",
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "type": "integer",
+        },
+        "query": {
+          "description": "The question to answer.",
+          "minLength": 1,
+          "type": "string",
+        },
+      },
+      "required": [
+        "query",
+      ],
+      "type": "object",
+    },
+    "name": "kagi_fastgpt",
+  },
+  {
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "impl": {
+          "enum": [
+            "scrape",
+            "api",
+          ],
+          "type": "string",
+        },
+        "q": {
+          "description": "Query context. Required for impl=api.",
+          "type": "string",
+        },
+        "rules": {
+          "description": "Personalization rules. api-mode only; ignored in scrape mode.",
+          "items": {
+            "properties": {
+              "action": {
+                "enum": [
+                  "pin",
+                  "raise",
+                  "lower",
+                  "block",
+                ],
+                "type": "string",
+              },
+              "domain": {
+                "type": "string",
+              },
+              "regex": {
+                "type": "string",
+              },
+            },
+            "required": [
+              "action",
+            ],
+            "type": "object",
+          },
+          "type": "array",
+        },
+        "urls": {
+          "items": {
+            "format": "uri",
+            "type": "string",
+          },
+          "maxItems": 20,
+          "minItems": 1,
+          "type": "array",
+        },
+      },
+      "required": [
+        "urls",
+      ],
+      "type": "object",
+    },
+    "name": "kagi_personalized_rank",
+  },
+  {
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "run_id": {
+          "minLength": 1,
+          "type": "string",
+        },
+      },
+      "required": [
+        "run_id",
+      ],
+      "type": "object",
+    },
+    "name": "kagi_research_cancel_run",
+  },
+  {
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "allow_api": {
+          "type": "boolean",
+        },
+        "budget_cents": {
+          "description": "Max API cents this run may spend. Default 0 (scrape-only).",
+          "minimum": 0,
+          "type": "number",
+        },
+        "depth": {
+          "maximum": 3,
+          "minimum": 1,
+          "type": "integer",
+        },
+        "question": {
+          "minLength": 1,
+          "type": "string",
+        },
+      },
+      "required": [
+        "question",
+      ],
+      "type": "object",
+    },
+    "name": "kagi_research_create_run",
+  },
+  {
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "run_id": {
+          "minLength": 1,
+          "type": "string",
+        },
+      },
+      "required": [
+        "run_id",
+      ],
+      "type": "object",
+    },
+    "name": "kagi_research_get_output",
+  },
+  {
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "run_id": {
+          "minLength": 1,
+          "type": "string",
+        },
+        "timeout_seconds": {
+          "default": 30,
+          "maximum": 300,
+          "minimum": 1,
+          "type": "integer",
+        },
+      },
+      "required": [
+        "run_id",
+      ],
+      "type": "object",
+    },
+    "name": "kagi_research_wait_for_run",
+  },
+  {
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "engine": {
+          "description": "Which engine serves the query: 'kagi' (default, tri-mode dispatcher), 'searxng' (free SearXNG fallback, noisier), or 'auto' (Kagi while under budget and the session is healthy, otherwise SearXNG).",
+          "enum": [
+            "kagi",
+            "searxng",
+            "auto",
+          ],
+          "type": "string",
+        },
+        "impl": {
+          "description": "Override which implementation handles this call. Ignored in single-impl modes. Only applies under engine='kagi'.",
+          "enum": [
+            "scrape",
+            "api",
+          ],
+          "type": "string",
+        },
+        "limit": {
+          "description": "Maximum number of search results per query (default: 10, max: 50)",
+          "maximum": 50,
+          "minimum": 1,
+          "type": "integer",
+        },
+        "max_age_s": {
+          "description": "Oldest acceptable cached result, in seconds (default: the cache TTL — search 24h, fastgpt 6h, summaries 7d). 0 skips the cache and fetches fresh.",
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "type": "integer",
+        },
+        "queries": {
+          "description": "One or more concise, keyword-focused search queries (max 20 per call). Include essential context within each query for standalone use.",
+          "items": {
+            "minLength": 1,
+            "type": "string",
+          },
+          "maxItems": 20,
+          "minItems": 1,
+          "type": "array",
+        },
+        "response_format": {
+          "description": "Output verbosity. concise (default) renders one citation line plus a ≤240-char snippet per result with a slim structured channel; detailed keeps the legacy full text and full structured responses.",
+          "enum": [
+            "concise",
+            "detailed",
+          ],
+          "type": "string",
+        },
+      },
+      "required": [
+        "queries",
+      ],
+      "type": "object",
+    },
+    "name": "kagi_search_fetch",
+    "outputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "dedup_dropped": {
+          "type": "number",
+        },
+        "errors": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "error": {
+                "type": "string",
+              },
+              "query": {
+                "type": "string",
+              },
+            },
+            "required": [
+              "query",
+              "error",
+            ],
+            "type": "object",
+          },
+          "type": "array",
+        },
+        "mode": {
+          "type": "string",
+        },
+        "queries": {
+          "items": {
+            "anyOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "meta": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "cache_age_s": {
+                        "type": "number",
+                      },
+                      "cache_hit": {
+                        "type": "boolean",
+                      },
+                      "cost_cents": {
+                        "type": "number",
+                      },
+                      "elapsed_ms": {
+                        "type": "number",
+                      },
+                      "impl": {
+                        "type": "string",
+                      },
+                      "refresh_triggered": {
+                        "type": "boolean",
+                      },
+                      "session_stale": {
+                        "type": "boolean",
+                      },
+                      "trace_id": {
+                        "type": "string",
+                      },
+                      "warnings": {
+                        "items": {
+                          "type": "string",
+                        },
+                        "type": "array",
+                      },
+                    },
+                    "required": [
+                      "impl",
+                      "cache_hit",
+                      "elapsed_ms",
+                    ],
+                    "type": "object",
+                  },
+                  "query": {
+                    "type": "string",
+                  },
+                  "results": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                        },
+                        "rank": {
+                          "type": "number",
+                        },
+                        "ref": {
+                          "type": "string",
+                        },
+                        "url": {
+                          "type": "string",
+                        },
+                      },
+                      "required": [
+                        "id",
+                        "ref",
+                        "url",
+                        "rank",
+                      ],
+                      "type": "object",
+                    },
+                    "type": "array",
+                  },
+                },
+                "required": [
+                  "query",
+                  "results",
+                  "meta",
+                ],
+                "type": "object",
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "buckets": {
+                    "additionalProperties": {},
+                    "properties": {
+                      "direct_answer": {
+                        "type": "string",
+                      },
+                      "infobox": {
+                        "additionalProperties": {},
+                        "propertyNames": {
+                          "type": "string",
+                        },
+                        "type": "object",
+                      },
+                      "related_search": {
+                        "items": {
+                          "type": "string",
+                        },
+                        "type": "array",
+                      },
+                    },
+                    "type": "object",
+                  },
+                  "meta": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "cache_age_s": {
+                        "type": "number",
+                      },
+                      "cache_hit": {
+                        "type": "boolean",
+                      },
+                      "cost_cents": {
+                        "type": "number",
+                      },
+                      "elapsed_ms": {
+                        "type": "number",
+                      },
+                      "impl": {
+                        "type": "string",
+                      },
+                      "refresh_triggered": {
+                        "type": "boolean",
+                      },
+                      "session_stale": {
+                        "type": "boolean",
+                      },
+                      "trace_id": {
+                        "type": "string",
+                      },
+                      "warnings": {
+                        "items": {
+                          "type": "string",
+                        },
+                        "type": "array",
+                      },
+                    },
+                    "required": [
+                      "impl",
+                      "cache_hit",
+                      "elapsed_ms",
+                    ],
+                    "type": "object",
+                  },
+                  "query": {
+                    "type": "string",
+                  },
+                  "results": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "props": {
+                          "additionalProperties": {},
+                          "propertyNames": {
+                            "type": "string",
+                          },
+                          "type": "object",
+                        },
+                        "published_at": {
+                          "type": "string",
+                        },
+                        "rank": {
+                          "type": "number",
+                        },
+                        "snippet": {
+                          "type": "string",
+                        },
+                        "source_domain": {
+                          "type": "string",
+                        },
+                        "source_impl": {
+                          "type": "string",
+                        },
+                        "thumbnail_url": {
+                          "type": "string",
+                        },
+                        "title": {
+                          "type": "string",
+                        },
+                        "url": {
+                          "type": "string",
+                        },
+                      },
+                      "required": [
+                        "rank",
+                        "url",
+                        "title",
+                        "snippet",
+                        "source_domain",
+                        "source_impl",
+                      ],
+                      "type": "object",
+                    },
+                    "type": "array",
+                  },
+                },
+                "required": [
+                  "query",
+                  "results",
+                  "meta",
+                ],
+                "type": "object",
+              },
+            ],
+          },
+          "type": "array",
+        },
+        "response_format": {
+          "enum": [
+            "concise",
+            "detailed",
+          ],
+          "type": "string",
+        },
+      },
+      "required": [
+        "response_format",
+        "mode",
+        "queries",
+        "errors",
+        "dedup_dropped",
+      ],
+      "type": "object",
+    },
+  },
+  {
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "impl": {
+          "enum": [
+            "scrape",
+            "api",
+          ],
+          "type": "string",
+        },
+        "limit": {
+          "maximum": 50,
+          "minimum": 1,
+          "type": "integer",
+        },
+        "q": {
+          "description": "Search query. Omit to browse recent Small Web posts via RSS (free).",
+          "type": "string",
+        },
+      },
+      "type": "object",
+    },
+    "name": "kagi_small_web",
+  },
+  {
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "cache": {
+          "type": "boolean",
+        },
+        "confirm_muriel": {
+          "type": "boolean",
+        },
+        "engine": {
+          "enum": [
+            "cecil",
+            "agnes",
+            "daphne",
+            "muriel",
+          ],
+          "type": "string",
+        },
+        "max_age_s": {
+          "description": "Oldest acceptable cached result, in seconds (default: the cache TTL — search 24h, fastgpt 6h, summaries 7d). 0 skips the cache and fetches fresh.",
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "type": "integer",
+        },
+        "summary_type": {
+          "default": "summary",
+          "enum": [
+            "summary",
+            "takeaway",
+          ],
+          "type": "string",
+        },
+        "target_language": {
+          "type": "string",
+        },
+        "text": {
+          "description": "Raw text to summarize (max 1MB).",
+          "maxLength": 1000000,
+          "minLength": 1,
+          "type": "string",
+        },
+      },
+      "required": [
+        "text",
+      ],
+      "type": "object",
+    },
+    "name": "kagi_summarize_text",
+  },
+  {
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "cache": {
+          "type": "boolean",
+        },
+        "confirm_muriel": {
+          "description": "Required when engine=muriel unless SUMMARIZER_MURIEL_REQUIRES_CONFIRM=false.",
+          "type": "boolean",
+        },
+        "engine": {
+          "enum": [
+            "cecil",
+            "agnes",
+            "daphne",
+            "muriel",
+          ],
+          "type": "string",
+        },
+        "impl": {
+          "enum": [
+            "scrape",
+            "api",
+          ],
+          "type": "string",
+        },
+        "max_age_s": {
+          "description": "Oldest acceptable cached result, in seconds (default: the cache TTL — search 24h, fastgpt 6h, summaries 7d). 0 skips the cache and fetches fresh.",
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "type": "integer",
+        },
+        "summary_type": {
+          "default": "summary",
+          "enum": [
+            "summary",
+            "takeaway",
+          ],
+          "type": "string",
+        },
+        "target_language": {
+          "type": "string",
+        },
+        "url": {
+          "format": "uri",
+          "type": "string",
+        },
+      },
+      "required": [
+        "url",
+      ],
+      "type": "object",
+    },
+    "name": "kagi_summarize_url",
+  },
+  {
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "impl": {
+          "description": "Override which implementation handles this call. Ignored in single-impl modes.",
+          "enum": [
+            "scrape",
+            "api",
+          ],
+          "type": "string",
+        },
+        "max_age_s": {
+          "description": "Oldest acceptable cached result, in seconds (default: the cache TTL — search 24h, fastgpt 6h, summaries 7d). 0 skips the cache and fetches fresh.",
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "type": "integer",
+        },
+        "summary_type": {
+          "default": "summary",
+          "description": "Type of summary to produce. 'summary' for prose, 'takeaway' for bulleted key points.",
+          "enum": [
+            "summary",
+            "takeaway",
+          ],
+          "type": "string",
+        },
+        "target_language": {
+          "description": "Desired output language. Two-letter code (e.g. 'EN'). Defaults to the document's original language.",
+          "type": "string",
+        },
+        "url": {
+          "description": "A URL to a document to summarize.",
+          "format": "uri",
+          "type": "string",
+        },
+      },
+      "required": [
+        "url",
+      ],
+      "type": "object",
+    },
+    "name": "kagi_summarizer",
+  },
+]
+`;
+
+exports[`advertised tool schemas > match the recorded wire contract in scrape mode 1`] = `
+[
+  {
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "cache": {
+          "description": "Allow a cached answer (default: true; cached responses are free). API-only.",
+          "type": "boolean",
+        },
+        "impl": {
+          "description": "Override which implementation handles this call. Hybrid default is scrape (free).",
+          "enum": [
+            "scrape",
+            "api",
+          ],
+          "type": "string",
+        },
+        "max_age_s": {
+          "description": "Oldest acceptable cached result, in seconds (default: the cache TTL — search 24h, fastgpt 6h, summaries 7d). 0 skips the cache and fetches fresh.",
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "type": "integer",
+        },
+        "query": {
+          "description": "The question to answer.",
+          "minLength": 1,
+          "type": "string",
+        },
+      },
+      "required": [
+        "query",
+      ],
+      "type": "object",
+    },
+    "name": "kagi_fastgpt",
+  },
+  {
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "impl": {
+          "enum": [
+            "scrape",
+            "api",
+          ],
+          "type": "string",
+        },
+        "q": {
+          "description": "Query context. Required for impl=api.",
+          "type": "string",
+        },
+        "rules": {
+          "description": "Personalization rules. api-mode only; ignored in scrape mode.",
+          "items": {
+            "properties": {
+              "action": {
+                "enum": [
+                  "pin",
+                  "raise",
+                  "lower",
+                  "block",
+                ],
+                "type": "string",
+              },
+              "domain": {
+                "type": "string",
+              },
+              "regex": {
+                "type": "string",
+              },
+            },
+            "required": [
+              "action",
+            ],
+            "type": "object",
+          },
+          "type": "array",
+        },
+        "urls": {
+          "items": {
+            "format": "uri",
+            "type": "string",
+          },
+          "maxItems": 20,
+          "minItems": 1,
+          "type": "array",
+        },
+      },
+      "required": [
+        "urls",
+      ],
+      "type": "object",
+    },
+    "name": "kagi_personalized_rank",
+  },
+  {
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "run_id": {
+          "minLength": 1,
+          "type": "string",
+        },
+      },
+      "required": [
+        "run_id",
+      ],
+      "type": "object",
+    },
+    "name": "kagi_research_cancel_run",
+  },
+  {
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "allow_api": {
+          "type": "boolean",
+        },
+        "budget_cents": {
+          "description": "Max API cents this run may spend. Default 0 (scrape-only).",
+          "minimum": 0,
+          "type": "number",
+        },
+        "depth": {
+          "maximum": 3,
+          "minimum": 1,
+          "type": "integer",
+        },
+        "question": {
+          "minLength": 1,
+          "type": "string",
+        },
+      },
+      "required": [
+        "question",
+      ],
+      "type": "object",
+    },
+    "name": "kagi_research_create_run",
+  },
+  {
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "run_id": {
+          "minLength": 1,
+          "type": "string",
+        },
+      },
+      "required": [
+        "run_id",
+      ],
+      "type": "object",
+    },
+    "name": "kagi_research_get_output",
+  },
+  {
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "run_id": {
+          "minLength": 1,
+          "type": "string",
+        },
+        "timeout_seconds": {
+          "default": 30,
+          "maximum": 300,
+          "minimum": 1,
+          "type": "integer",
+        },
+      },
+      "required": [
+        "run_id",
+      ],
+      "type": "object",
+    },
+    "name": "kagi_research_wait_for_run",
+  },
+  {
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "engine": {
+          "description": "Which engine serves the query: 'kagi' (default, tri-mode dispatcher), 'searxng' (free SearXNG fallback, noisier), or 'auto' (Kagi while under budget and the session is healthy, otherwise SearXNG).",
+          "enum": [
+            "kagi",
+            "searxng",
+            "auto",
+          ],
+          "type": "string",
+        },
+        "impl": {
+          "description": "Override which implementation handles this call. Ignored in single-impl modes. Only applies under engine='kagi'.",
+          "enum": [
+            "scrape",
+            "api",
+          ],
+          "type": "string",
+        },
+        "limit": {
+          "description": "Maximum number of search results per query (default: 10, max: 50)",
+          "maximum": 50,
+          "minimum": 1,
+          "type": "integer",
+        },
+        "max_age_s": {
+          "description": "Oldest acceptable cached result, in seconds (default: the cache TTL — search 24h, fastgpt 6h, summaries 7d). 0 skips the cache and fetches fresh.",
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "type": "integer",
+        },
+        "queries": {
+          "description": "One or more concise, keyword-focused search queries (max 20 per call). Include essential context within each query for standalone use.",
+          "items": {
+            "minLength": 1,
+            "type": "string",
+          },
+          "maxItems": 20,
+          "minItems": 1,
+          "type": "array",
+        },
+        "response_format": {
+          "description": "Output verbosity. concise (default) renders one citation line plus a ≤240-char snippet per result with a slim structured channel; detailed keeps the legacy full text and full structured responses.",
+          "enum": [
+            "concise",
+            "detailed",
+          ],
+          "type": "string",
+        },
+      },
+      "required": [
+        "queries",
+      ],
+      "type": "object",
+    },
+    "name": "kagi_search_fetch",
+    "outputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "dedup_dropped": {
+          "type": "number",
+        },
+        "errors": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "error": {
+                "type": "string",
+              },
+              "query": {
+                "type": "string",
+              },
+            },
+            "required": [
+              "query",
+              "error",
+            ],
+            "type": "object",
+          },
+          "type": "array",
+        },
+        "mode": {
+          "type": "string",
+        },
+        "queries": {
+          "items": {
+            "anyOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "meta": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "cache_age_s": {
+                        "type": "number",
+                      },
+                      "cache_hit": {
+                        "type": "boolean",
+                      },
+                      "cost_cents": {
+                        "type": "number",
+                      },
+                      "elapsed_ms": {
+                        "type": "number",
+                      },
+                      "impl": {
+                        "type": "string",
+                      },
+                      "refresh_triggered": {
+                        "type": "boolean",
+                      },
+                      "session_stale": {
+                        "type": "boolean",
+                      },
+                      "trace_id": {
+                        "type": "string",
+                      },
+                      "warnings": {
+                        "items": {
+                          "type": "string",
+                        },
+                        "type": "array",
+                      },
+                    },
+                    "required": [
+                      "impl",
+                      "cache_hit",
+                      "elapsed_ms",
+                    ],
+                    "type": "object",
+                  },
+                  "query": {
+                    "type": "string",
+                  },
+                  "results": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                        },
+                        "rank": {
+                          "type": "number",
+                        },
+                        "ref": {
+                          "type": "string",
+                        },
+                        "url": {
+                          "type": "string",
+                        },
+                      },
+                      "required": [
+                        "id",
+                        "ref",
+                        "url",
+                        "rank",
+                      ],
+                      "type": "object",
+                    },
+                    "type": "array",
+                  },
+                },
+                "required": [
+                  "query",
+                  "results",
+                  "meta",
+                ],
+                "type": "object",
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "buckets": {
+                    "additionalProperties": {},
+                    "properties": {
+                      "direct_answer": {
+                        "type": "string",
+                      },
+                      "infobox": {
+                        "additionalProperties": {},
+                        "propertyNames": {
+                          "type": "string",
+                        },
+                        "type": "object",
+                      },
+                      "related_search": {
+                        "items": {
+                          "type": "string",
+                        },
+                        "type": "array",
+                      },
+                    },
+                    "type": "object",
+                  },
+                  "meta": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "cache_age_s": {
+                        "type": "number",
+                      },
+                      "cache_hit": {
+                        "type": "boolean",
+                      },
+                      "cost_cents": {
+                        "type": "number",
+                      },
+                      "elapsed_ms": {
+                        "type": "number",
+                      },
+                      "impl": {
+                        "type": "string",
+                      },
+                      "refresh_triggered": {
+                        "type": "boolean",
+                      },
+                      "session_stale": {
+                        "type": "boolean",
+                      },
+                      "trace_id": {
+                        "type": "string",
+                      },
+                      "warnings": {
+                        "items": {
+                          "type": "string",
+                        },
+                        "type": "array",
+                      },
+                    },
+                    "required": [
+                      "impl",
+                      "cache_hit",
+                      "elapsed_ms",
+                    ],
+                    "type": "object",
+                  },
+                  "query": {
+                    "type": "string",
+                  },
+                  "results": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "props": {
+                          "additionalProperties": {},
+                          "propertyNames": {
+                            "type": "string",
+                          },
+                          "type": "object",
+                        },
+                        "published_at": {
+                          "type": "string",
+                        },
+                        "rank": {
+                          "type": "number",
+                        },
+                        "snippet": {
+                          "type": "string",
+                        },
+                        "source_domain": {
+                          "type": "string",
+                        },
+                        "source_impl": {
+                          "type": "string",
+                        },
+                        "thumbnail_url": {
+                          "type": "string",
+                        },
+                        "title": {
+                          "type": "string",
+                        },
+                        "url": {
+                          "type": "string",
+                        },
+                      },
+                      "required": [
+                        "rank",
+                        "url",
+                        "title",
+                        "snippet",
+                        "source_domain",
+                        "source_impl",
+                      ],
+                      "type": "object",
+                    },
+                    "type": "array",
+                  },
+                },
+                "required": [
+                  "query",
+                  "results",
+                  "meta",
+                ],
+                "type": "object",
+              },
+            ],
+          },
+          "type": "array",
+        },
+        "response_format": {
+          "enum": [
+            "concise",
+            "detailed",
+          ],
+          "type": "string",
+        },
+      },
+      "required": [
+        "response_format",
+        "mode",
+        "queries",
+        "errors",
+        "dedup_dropped",
+      ],
+      "type": "object",
+    },
+  },
+  {
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "impl": {
+          "enum": [
+            "scrape",
+            "api",
+          ],
+          "type": "string",
+        },
+        "limit": {
+          "maximum": 50,
+          "minimum": 1,
+          "type": "integer",
+        },
+        "q": {
+          "description": "Search query. Omit to browse recent Small Web posts via RSS (free).",
+          "type": "string",
+        },
+      },
+      "type": "object",
+    },
+    "name": "kagi_small_web",
+  },
+  {
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "cache": {
+          "type": "boolean",
+        },
+        "confirm_muriel": {
+          "description": "Required when engine=muriel unless SUMMARIZER_MURIEL_REQUIRES_CONFIRM=false.",
+          "type": "boolean",
+        },
+        "engine": {
+          "enum": [
+            "cecil",
+            "agnes",
+            "daphne",
+            "muriel",
+          ],
+          "type": "string",
+        },
+        "impl": {
+          "enum": [
+            "scrape",
+            "api",
+          ],
+          "type": "string",
+        },
+        "max_age_s": {
+          "description": "Oldest acceptable cached result, in seconds (default: the cache TTL — search 24h, fastgpt 6h, summaries 7d). 0 skips the cache and fetches fresh.",
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "type": "integer",
+        },
+        "summary_type": {
+          "default": "summary",
+          "enum": [
+            "summary",
+            "takeaway",
+          ],
+          "type": "string",
+        },
+        "target_language": {
+          "type": "string",
+        },
+        "url": {
+          "format": "uri",
+          "type": "string",
+        },
+      },
+      "required": [
+        "url",
+      ],
+      "type": "object",
+    },
+    "name": "kagi_summarize_url",
+  },
+  {
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "impl": {
+          "description": "Override which implementation handles this call. Ignored in single-impl modes.",
+          "enum": [
+            "scrape",
+            "api",
+          ],
+          "type": "string",
+        },
+        "max_age_s": {
+          "description": "Oldest acceptable cached result, in seconds (default: the cache TTL — search 24h, fastgpt 6h, summaries 7d). 0 skips the cache and fetches fresh.",
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "type": "integer",
+        },
+        "summary_type": {
+          "default": "summary",
+          "description": "Type of summary to produce. 'summary' for prose, 'takeaway' for bulleted key points.",
+          "enum": [
+            "summary",
+            "takeaway",
+          ],
+          "type": "string",
+        },
+        "target_language": {
+          "description": "Desired output language. Two-letter code (e.g. 'EN'). Defaults to the document's original language.",
+          "type": "string",
+        },
+        "url": {
+          "description": "A URL to a document to summarize.",
+          "format": "uri",
+          "type": "string",
+        },
+      },
+      "required": [
+        "url",
+      ],
+      "type": "object",
+    },
+    "name": "kagi_summarizer",
+  },
+]
+`;

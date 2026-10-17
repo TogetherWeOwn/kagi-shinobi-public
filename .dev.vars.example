@@ -1,0 +1,15 @@
+# Copy to `.dev.vars` for local `wrangler dev`.
+# For production, use `wrangler secret put <NAME>`.
+
+# Shared bearer token for all /mcp, /search, /summarize, /admin/* endpoints.
+# Generate with: openssl rand -hex 32
+ADMIN_TOKEN=change-me
+
+# Kagi session token — copy from https://kagi.com/settings
+# Format: the value AFTER `token=` in your Session Link.
+KAGI_SESSION_TOKEN=
+
+# Only needed if AUTO_REFRESH_ENABLED=true.
+# Kagi supports password login for accounts with a password set.
+KAGI_EMAIL=
+KAGI_PASSWORD=

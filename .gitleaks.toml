@@ -1,0 +1,12 @@
+# Gitleaks config — default ruleset plus exact-value allowlists for known
+# non-secrets. Keep full-history scanning on; never exclude a path to move
+# a number. Each entry below names a literal that is documented public
+# config, not a credential.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Documented non-secret config values (exact literals only)"
+regexes = [
+  '''MAX_API_CENTS_PER_MONTH=0''',
+]
