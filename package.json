@@ -1,6 +1,6 @@
 {
   "name": "kagi-shinobi",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "private": true,
   "description": "Cloudflare Worker fronting Kagi search + summarizer via session token, exposed as remote MCP and REST. Chrome-headers stealth. Auto token refresh via Browser Rendering.",
   "type": "module",
