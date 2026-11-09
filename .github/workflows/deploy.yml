@@ -146,6 +146,15 @@ jobs:
           node-version: "22"
           cache: "npm"
 
+      # Match CI's policy-capable package manager before the strict project
+      # install. No lifecycle scripts run during this pinned bootstrap.
+      - name: Install policy-capable npm
+        working-directory: ${{ runner.temp }}
+        run: |
+          TOOL_DIR="$RUNNER_TEMP/kagi-npm-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          npm install --prefix "$TOOL_DIR" --no-save --package-lock=false npm@11.19.0 --ignore-scripts --no-audit --no-fund
+          printf '%s\n' "$TOOL_DIR/node_modules/.bin" >> "$GITHUB_PATH"
+
       # --include=dev: persistent runners may carry NODE_ENV=production, under
       # which bare `npm ci` silently skips devDependencies and the wrangler
       # step below then fails with "wrangler: not found".

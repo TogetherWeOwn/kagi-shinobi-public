@@ -3,10 +3,16 @@
 ## Installation policy
 
 The project `.npmrc` disables automatic lifecycle scripts and requires a three-day
-release age for new resolutions. npm 11.19.0 supports both settings. Older npm
-versions may ignore `min-release-age`; use a supporting npm version when resolving
-updates. A frozen install does not retrospectively check publication ages in an
-existing lockfile.
+release age for new resolutions. npm 11.19.0 supports both settings. The manifest
+requires npm >=11.19.0 and `engine-strict=true` rejects older package managers on
+install/update rather than silently accepting an unsupported age setting.
+CI and the deploy workflow bootstrap npm 11.19.0 into a run-specific directory
+under runner-managed temporary storage before the strict project install, with
+scripts disabled and no global installation. This exact tool release was published on
+2026-07-29, before the three-day cutoff; no lifecycle-script exception is needed.
+This changes workflow source only, not an installed runtime or host toolchain.
+A frozen install does not retrospectively check publication ages in an existing
+lockfile.
 
 Keep `ignore-scripts=true` for clean installs, including CI. Run the named commands
 in `package.json` explicitly; do not enable all install scripts to fix a missing
@@ -20,8 +26,9 @@ rather than disabling this policy globally.
 
 ## Compatible security group (2026-11-09)
 
-Only these five lockfile entries change; the direct manifest ranges and all
-other resolutions stay unchanged:
+Only these five dependency resolutions change; direct dependency ranges and all
+other resolutions stay unchanged. The root manifest/lock metadata additionally
+requires a policy-capable npm version:
 
 | Package | Before | After | Dependabot alert numbers |
 | --- | --- | --- | --- |
@@ -46,8 +53,10 @@ found no drift across 223 held package paths, including nested copies. No
 installed dependency-version assertions or additional security pin guard existed
 in the tests. No override is introduced to force an incompatible dependency.
 
-The existing CI suite is the compatibility/regression check; no application
-behavior or test expectation changes. Full suites run in GitHub Actions, not as
+The existing CI suite is the application compatibility/regression check.
+`test/ci/dependency-policy.test.ts` additionally guards the npm engine, strict
+configuration and both workflow bootstrap entry points. No application behavior
+or existing test expectation changes. Full suites run in GitHub Actions, not as
 local CI mirrors. `npm ci --dry-run` only validates lock/manifest consistency;
 it is not clean-install or build evidence.
 
