@@ -6,9 +6,12 @@
 # sessions, crypto, keys or credentials; permissions, tenant isolation or
 # personal data; SQL, schema or migrations; dependencies or lockfiles (including
 # dev dependencies); CI/workflows; weakened assertions, deleted tests/snapshots,
-# or lowered gates. Test allowlists apply only to additive unit-test changes.
+# or lowered gates. Test allowlists apply only to additive unit-test changes;
+# changes introducing network or process effects are sensitive. Fixture changes
+# that reduce test coverage are sensitive, even if assertions are unchanged.
 # Prose or fixtures containing security guidance, secrets, or executable content
-# are sensitive. This file documents review policy; it does not enforce it.
+# are sensitive. Reviews are independent of the author. This file documents review
+# policy; it does not enforce it.
 version: 1
 default_tier: sensitive
 tiers:
