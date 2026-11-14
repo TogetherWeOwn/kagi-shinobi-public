@@ -1,0 +1,51 @@
+# Highest changed-path tier wins: sensitive > ordinary > low. Unmatched paths
+# are sensitive; this map is itself sensitive. QA reviews every change.
+# Security reviews sensitive, unclassified, or escalated changes before QA.
+# A sensitive-floor downgrade requires explicit Security approval on the PR.
+# Content overrides every path tier: endpoints or input parsing; auth, authz,
+# sessions, crypto, keys or credentials; permissions, tenant isolation or
+# personal data; SQL, schema or migrations; dependencies or lockfiles (including
+# dev dependencies); CI/workflows; weakened assertions, deleted tests/snapshots,
+# or lowered gates. Test allowlists apply only to additive unit-test changes.
+# Prose or fixtures containing security guidance, secrets, or executable content
+# are sensitive. This file documents review policy; it does not enforce it.
+version: 1
+default_tier: sensitive
+tiers:
+  low:
+    - test/fixtures/search/basic-results.html
+    - test/fixtures/search/grouped-results.html
+    - test/fixtures/search/news-heavy.html
+    - test/fixtures/search/zero-results.html
+    - test/util/errors.test.ts
+    - test/util/log.test.ts
+  ordinary: []
+  sensitive:
+    - .github/review-tiers.yml
+    - .github/workflows/**
+    - .github/scripts/**
+    - .github/dependabot.yml
+    - .github/CODEOWNERS
+    - CODEOWNERS
+    - .github/rulesets/**
+    - .github/branch-protection/**
+    - .claude/**
+    - AGENTS.md
+    - '**/AGENTS.md'
+    - CLAUDE.md
+    - '**/CLAUDE.md'
+    - '**/skills/**'
+    - package.json
+    - package-lock.json
+    - .npmrc
+    - tsconfig.json
+    - vitest.config.ts
+    - playwright.config.ts
+    - wrangler.jsonc
+    - ci/**
+    - src/**
+    - test/util/auth.test.ts
+    - test/token/**
+    - test/workers/**
+    - '**/Dockerfile*'
+    - '**/Makefile*'
