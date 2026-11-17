@@ -18,7 +18,7 @@ Keep `ignore-scripts=true` for clean installs, including CI. Run the named comma
 in `package.json` explicitly; do not enable all install scripts to fix a missing
 binary. The locked install-hook candidates are `core-js-pure@3.50.0`,
 `esbuild@0.28.1` and `0.28.2`, `fsevents@2.3.3`, and
-`workerd@1.20260815.1` and `1.20261023.1`. None has an approved script exception.
+`workerd@1.20260815.1` and `1.20261110.1`. None has an approved script exception.
 The clean install, type generation, tests, bundle dry-run and HTTP E2E checks in
 GitHub Actions must verify that the optional native packages suffice without
 those hooks. If they do not, review the exact artifact and a narrow exception
@@ -62,8 +62,10 @@ it is not clean-install or build evidence.
 
 ## Unresolved, separately scoped work
 
-The compatible group addresses 13 of the 29 observed alert records. The other 16
-remain unresolved pending a separately reviewed parent upgrade or replacement:
+The original scan observed 29 alert records, 13 associated with the compatible
+group. These counts and the audit results below describe the original dependency
+graph, not a fresh scan after the Puppeteer and tooling upgrades. Remaining
+advisories require separate assessment; do not treat historical counts as current:
 
 - `miniflare@5.20260815.0-alpha` pins `sharp@0.35.2` and `undici@7.29.0`.
   The required advisory floors are `sharp@0.35.5` (both sharp advisories) and
@@ -71,17 +73,16 @@ remain unresolved pending a separately reviewed parent upgrade or replacement:
   owns this older Miniflare. The separate Wrangler subtree already has those
   patched versions; upgrading only the root Wrangler does not repair the test
   pool's copies.
-- The Puppeteer dependency chain uses `basic-ftp@5.3.1`; the reported patch is
-  `6.2.1`, outside its parent's `^5.0.2` range. Do not force a major override.
-- `extract-zip@2.0.1` has two advisories without a patched release in the
-  observed metadata. Review a supported parent replacement or removal; do not
-  claim this is fixed by choosing a different minimum patched version.
+- The earlier Puppeteer dependency chain included `basic-ftp@5.3.1` and
+  `extract-zip@2.0.1`. Neither appears in the lockfile after the Puppeteer
+  upgrade; this does not establish the current status of their alert records.
 - The post-update npm audit also reports the test pool's exact-pinned
   `zod@4.4.3` (the advisory floor is `4.6.6`). This is additional residual work,
   not one of the original 29 Dependabot alert records.
 
-The post-update npm audit reports 13 vulnerable package records (12 high and
-one moderate), including affected ancestor packages. Package records, unique
+The earlier post-update npm audit reported 13 vulnerable package records (12 high and
+one moderate), including affected ancestor packages; it predates the Puppeteer and
+tooling upgrades and is not a current audit. Package records, unique
 advisories and Dependabot alert records are different counts. These findings are
 not dismissed, accepted as safe, or evidence of proven runtime exploitation.
 
