@@ -89,6 +89,15 @@ jobs:
           # outright on 20, before typecheck or tests ever run.
           node-version: "22"
           cache: "npm"
+      # Bootstrap outside the project: its strict npm engine rejects the
+      # older npm bundled with Node 22. This reviewed tool release predates
+      # the three-day cutoff; install none of its lifecycle scripts.
+      - name: Install policy-capable npm
+        working-directory: ${{ runner.temp }}
+        run: |
+          TOOL_DIR="$RUNNER_TEMP/kagi-npm-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          npm install --prefix "$TOOL_DIR" --no-save --package-lock=false npm@11.19.0 --ignore-scripts --no-audit --no-fund
+          printf '%s\n' "$TOOL_DIR/node_modules/.bin" >> "$GITHUB_PATH"
       - run: npm ci
       # Regenerate the ambient Cloudflare.Env types from wrangler.jsonc.
       # No auth needed — pure type generation.

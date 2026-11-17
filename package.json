@@ -4,6 +4,9 @@
   "private": true,
   "description": "Cloudflare Worker fronting Kagi search + summarizer via session token, exposed as remote MCP and REST. Chrome-headers stealth. Auto token refresh via Browser Rendering.",
   "type": "module",
+  "engines": {
+    "npm": ">=11.19.0"
+  },
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
